@@ -51,6 +51,24 @@ log "etcd"
 sed "s|\${ETCD_REF}|$(pinned_ref ETCD)|" "$ROOT/deploy/manifests/10-etcd.yaml" | kubectl apply -f - >/dev/null
 kubectl -n gateway rollout status statefulset/etcd --timeout=180s >/dev/null
 
+# ---------------------------------------------------------------- observability (P2)
+log "observability"
+# kube-prometheus-stack first: it installs the ServiceMonitor/PrometheusRule CRDs the others use
+helm_install kps observability kube-prometheus-stack KPS "$ROOT/deploy/helm-values/kube-prometheus-stack.yaml" \
+  --set "prometheus.prometheusSpec.image.sha=${PROMETHEUS_DIGEST#sha256:}" \
+  --set "alertmanager.alertmanagerSpec.image.sha=${ALERTMANAGER_DIGEST#sha256:}" \
+  --set "prometheusOperator.image.sha=${PROM_OPERATOR_DIGEST#sha256:}" \
+  --set "prometheusOperator.prometheusConfigReloader.image.sha=${PROM_CONFIG_RELOADER_DIGEST#sha256:}" \
+  --set "grafana.image.sha=${GRAFANA_DIGEST#sha256:}" \
+  --set "grafana.sidecar.image.sha=${K8S_SIDECAR_DIGEST#sha256:}"
+helm_install otel-collector observability opentelemetry-collector OTELCOL "$ROOT/deploy/helm-values/opentelemetry-collector.yaml" \
+  --set "image.tag=${OTELCOL_IMAGE##*:}" --set "image.digest=$OTELCOL_DIGEST"
+helm_install tempo observability tempo TEMPO "$ROOT/deploy/helm-values/tempo.yaml" \
+  --set "tempo.tag=${TEMPO_IMAGE##*:}@$TEMPO_DIGEST"
+helm_install loki observability loki LOKI "$ROOT/deploy/helm-values/loki.yaml" \
+  --set "loki.image.tag=${LOKI_IMAGE##*:}" --set "loki.image.digest=$LOKI_DIGEST"
+"$ROOT/scripts/apply-observability.sh"
+
 # ---------------------------------------------------------------- built images
 "$ROOT/scripts/build-images.sh"
 # shellcheck source=/dev/null
@@ -84,6 +102,7 @@ cat <<EOF
 
 Demo is up (LLM_MODE=$LLM_MODE, runtime=$CONTAINER_RUNTIME).
   Gateway:     http://localhost:$HOST_PORT_GATEWAY
+  Grafana:     http://localhost:$HOST_PORT_GRAFANA  (anonymous viewer; admin password in .secrets/grafana-admin-password)
   KUBECONFIG:  $KUBECONFIG
   Secrets:     $ROOT/.secrets/ (mode 600)
 EOF

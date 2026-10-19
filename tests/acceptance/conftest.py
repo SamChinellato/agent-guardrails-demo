@@ -61,25 +61,50 @@ class Admin:
         self.http.patch(path, json=body).raise_for_status()
 
 
-@pytest.fixture(scope="session")
-def admin() -> Iterator[Admin]:
-    """Deliberate port-forward to the Admin API (rule 6), torn down after the session."""
-    proc = subprocess.Popen(
-        [KUBECTL, "--kubeconfig", KUBECONFIG, "-n", "gateway", "port-forward", "svc/apisix-admin", ":9180"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    try:
-        line = proc.stdout.readline()
+class PortForward:
+    """kubectl port-forward to a Service on a free local port."""
+
+    def __init__(self, namespace: str, service: str, port: int):
+        self.proc = subprocess.Popen(
+            [KUBECTL, "--kubeconfig", KUBECONFIG, "-n", namespace, "port-forward", f"svc/{service}", f":{port}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        line = self.proc.stdout.readline()
         m = re.search(r"127\.0\.0\.1:(\d+)", line)
-        assert m, f"port-forward failed: {line}"
-        client = Admin(f"http://127.0.0.1:{m.group(1)}", secret("apisix-admin-key"))
-        poll(lambda: _reachable(client), timeout=15)
-        yield client
-    finally:
-        proc.terminate()
-        proc.wait(timeout=10)
+        if not m:
+            self.close()
+            raise RuntimeError(f"port-forward to {namespace}/{service} failed: {line}")
+        self.url = f"http://127.0.0.1:{m.group(1)}"
+
+    def close(self) -> None:
+        self.proc.terminate()
+        self.proc.wait(timeout=10)
+
+
+@pytest.fixture(scope="session")
+def forward() -> Iterator[Callable[[str, str, int], str]]:
+    """forward(namespace, service, port) -> base URL; all closed after the session."""
+    opened: dict[tuple, PortForward] = {}
+
+    def _open(namespace: str, service: str, port: int) -> str:
+        key = (namespace, service, port)
+        if key not in opened:
+            opened[key] = PortForward(namespace, service, port)
+        return opened[key].url
+
+    yield _open
+    for pf in opened.values():
+        pf.close()
+
+
+@pytest.fixture(scope="session")
+def admin(forward) -> Admin:
+    """Deliberate port-forward to the Admin API (rule 6)."""
+    client = Admin(forward("gateway", "apisix-admin", 9180), secret("apisix-admin-key"))
+    poll(lambda: _reachable(client), timeout=15)
+    return client
 
 
 def _reachable(client: Admin) -> bool:

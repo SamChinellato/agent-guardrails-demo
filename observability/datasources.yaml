@@ -1,0 +1,62 @@
+# Grafana datasources (7.8, OBS-04), loaded by the Grafana sidecar from ConfigMap
+# grafana-datasources (label grafana_datasource). Fixed UIDs so dashboards can reference them.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://kps-prometheus.observability.svc.cluster.local:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+      exemplarTraceIdDestinations:
+        - {name: trace_id, datasourceUid: tempo}
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki.observability.svc.cluster.local:3100
+    jsonData:
+      maxLines: 1000
+      # Log line -> trace. Service logs arrive over OTLP with trace_id as structured
+      # metadata; APISIX access logs are JSON lines containing "trace_id".
+      derivedFields:
+        - name: trace_id
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: View trace
+        - name: TraceID
+          matcherRegex: 'trace_id"?\s*[:=]\s*"?(\w{32})'
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: View trace
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo.observability.svc.cluster.local:3200
+    jsonData:
+      nodeGraph: {enabled: true}
+      search: {hide: false}
+      # Trace -> its logs (both OTLP service logs and APISIX access logs)
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -10m
+        spanEndTimeShift: 10m
+        customQuery: true
+        query: '{service_name=~".+"} | json | trace_id="$${__trace.traceId}"'
+      tracesToMetrics:
+        datasourceUid: prometheus
+
+  - name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://kps-alertmanager.observability.svc.cluster.local:9093
+    jsonData:
+      implementation: prometheus

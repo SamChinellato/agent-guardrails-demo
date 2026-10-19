@@ -1,0 +1,27 @@
+# Prometheus scrapes every demo Service labelled demo/metrics=true on its "http" port
+# (OBS-03, NFR-06). APISIX and the collector have their own ServiceMonitors from their charts.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-services
+  namespace: ai
+spec:
+  selector:
+    matchLabels: {demo/metrics: "true"}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-services
+  namespace: gateway
+spec:
+  selector:
+    matchLabels: {demo/metrics: "true"}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s

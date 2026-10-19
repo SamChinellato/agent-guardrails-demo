@@ -1,0 +1,99 @@
+# kube-prometheus-stack (7.8): Prometheus, Alertmanager, Grafana. Image digests are set by
+# scripts/up.sh from versions.env. Cluster-component monitoring is off: the demo only
+# watches its own workloads.
+fullnameOverride: kps
+crds:
+  enabled: true
+defaultRules:
+  create: false
+kubeStateMetrics: {enabled: false}
+nodeExporter: {enabled: false}
+kubelet: {enabled: false}
+kubeApiServer: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeProxy: {enabled: false}
+kubeEtcd: {enabled: false}
+coreDns: {enabled: false}
+windowsMonitoring: {enabled: false}
+
+prometheusOperator:
+  admissionWebhooks: {enabled: false}   # avoids the certgen Job and its image
+  tls: {enabled: false}
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 5s                  # KS-10 demo timings
+    evaluationInterval: 5s
+    retention: 24h                      # OBS-07
+    # Select every ServiceMonitor / PodMonitor / PrometheusRule, not only this release's
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 5Gi}}
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: {cpu: 20m, memory: 32Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+  # The killswitch webhook receiver is added in P5 (F6, KS-10)
+  config:
+    global: {resolve_timeout: 1m}
+    route:
+      receiver: "null"
+      group_by: [alertname, killswitch_scope]
+      group_wait: 5s
+      group_interval: 10s
+      repeat_interval: 1h
+    receivers:
+      - name: "null"
+
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: false
+  testFramework: {enabled: false}
+  admin:
+    existingSecret: grafana-admin       # created by scripts/gen-secrets.sh
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: 30300
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  grafana.ini:
+    analytics: {reporting_enabled: false, check_for_updates: false, check_for_plugin_updates: false}
+    news: {news_feed_enabled: false}
+    # Read-only anonymous access so the presenter can open dashboards without logging in;
+    # the port is bound to 127.0.0.1 only (k3d/cluster.yaml)
+    auth.anonymous: {enabled: true, org_role: Viewer}
+    dashboards: {min_refresh_interval: 5s}
+  # Datasources and dashboards come from ConfigMaps via the sidecar (7.8, OBS-05)
+  sidecar:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {cpu: 100m, memory: 128Mi}
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: false   # all datasources are defined in observability/datasources.yaml
+      label: grafana_datasource
+      searchNamespace: observability
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: observability
+      folderAnnotation: grafana_folder
+      provider: {foldersFromFilesStructure: false, allowUiUpdates: false}

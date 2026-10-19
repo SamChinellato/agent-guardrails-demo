@@ -159,3 +159,58 @@ GW-07 mentions a "bootstrap Job" among the Admin API's allowed clients. The boot
 ## D-018 Live mode works end to end; qwen3 thinking is off (P1, updates D-006)
 
 With the gateway in live mode, a chat completion went researcher → APISIX `ai-proxy` → `host.containers.internal:11434` → host Ollama → `qwen3:4b`. It took 5.5 s with `/no_think` in the system prompt, against 31 s with thinking on (D-006). The agents (P4) will send `/no_think`. The route caps output at 1024 tokens.
+
+## D-019 Presenter-requested live demo: chat, typed injection, rogue agent (P1, plan)
+
+The operator asked for a finished demo that includes three live pieces, beyond the spec's scripted scenarios. They become requirements `DEMO-01`–`DEMO-03` in `REQUIREMENTS_STATUS.md`.
+
+- **DEMO-01 Agent chat.** A single-page chat at `localhost:8080/console` lets the presenter talk to the researcher agent live, on the host Ollama.
+  - The page is served through APISIX, so no new host port.
+  - Its small backend (`console` service) holds the `demo-user` key, and the browser never sees a secret.
+  - The agent gets a chat endpoint, `POST /chat {messages}`, next to `/task`.
+- **DEMO-02 Typed injection filtered before the agent.** The `agent-researcher` route gets the same two inbound filters as the LLM route: `ai-prompt-guard` (regex) and `ai-injection-guard` (the classifier, P3), under a new guard check `agent.user_prompt_injection`.
+  - The chat body uses OpenAI-style `messages`, so both plugins apply without change.
+  - A blocked message returns 400 or 403 with the decision ID, and the agent never sees it.
+  - The LLM-route checks stay as a second layer.
+- **DEMO-03 Rogue agent shut down for anomalous behaviour.** S6 is no longer a stretch goal.
+  - A "rogue" switch in the console starts a scripted runaway: the agent fires tool calls in a tight loop and token use spikes.
+  - Prometheus alert rules on per-agent tool-call rate (`AgentToolCallSpike`) and token rate (`TokenBurn`) fire, Alertmanager calls the killswitch (F6), and the killswitch trips that agent.
+  - The chat shows `halted_by_kill_switch`, and Grafana shows the spike and the kill.
+  - Windows are short enough for a live audience, inside the KS-05 alert-driven bound of 60 s.
+- **Hybrid LLM routing in live mode.** A second LLM route matches requests carrying a scripted `X-Demo-Scenario` and sends them to mock-llm; everything else goes to Ollama. The rogue run and the S0–S5 cascade then behave the same every time, while free chat stays live. The route still applies the same guards and kill switch.
+
+## D-020 APISIX 3.19 `opentelemetry` reads its collector from plugin metadata (P2)
+
+**Finding.** With the collector configured only in `plugin_attr` (`config.yaml`, as 7.2 describes), APISIX produced no spans, and `$opentelemetry_trace_id` stayed empty. The log said `plugin_metadata is required for opentelemetry plugin to working properly`. On 3.19 the collector address, resource, batching and `set_ngx_var` live in the plugin's **metadata** schema, read from the plugin source in the container.
+
+**Chosen.** `gateway/plugin_metadata/opentelemetry.json`, applied and drift-checked by `bootstrap-gateway.sh` like every other object. Its id is the file name, because plugin metadata is keyed by plugin name. `set_ngx_var: true` also stays in `plugin_attr`, because the APISIX CLI declares `$opentelemetry_trace_id` and `$opentelemetry_span_id` in `nginx.conf` only from there. The batch timeouts are 1 s.
+
+**Verified.** One request gives one trace containing APISIX's server span, with mock-llm's span as its child (OBS-02). The trace was searchable in Tempo after 1.6 s.
+
+## D-021 Telemetry paths (P2)
+
+| Signal | Path | Note |
+| --- | --- | --- |
+| Service traces and logs | OTLP/HTTP → collector → Tempo (`otlp_grpc`) / Loki (`/otlp`) | `demo-common` exports both. Logs also go to stdout as JSON. In Loki, `trace_id` and `span_id` are structured metadata |
+| APISIX spans | `opentelemetry` plugin → collector → Tempo | D-020 |
+| APISIX access logs | `loki-logger` → Loki push API, directly | The spec allows `loki-logger` or `http-logger`. Going direct avoids putting a generic HTTP receiver on the collector. Fields: trace_id, span_id, consumer, route_id, method, uri, status, latency, upstream. Bodies are off (GW-06) |
+| Metrics | Prometheus scrapes APISIX, demo services (`demo/metrics=true` Services) and the collector's OTLP→Prometheus exporter, all every 5 s | |
+
+Other notes:
+- The collector chart (0.175.1) renames exporters to the newer names (`otlp` → `otlp_grpc`, `otlphttp` → `otlp_http`), so the values use the new names.
+- kube-prometheus-stack must be installed first, because the other charts' ServiceMonitors need its CRDs.
+- Loki's trace↔log queries use `| json | trace_id="…"`. That matches both the structured-metadata OTLP logs and APISIX's JSON lines.
+- **Gateway-measured tokens.** APISIX 3.19 exports `apisix_llm_prompt_tokens` and `apisix_llm_completion_tokens` per consumer. The `TokenBurn` and rogue-agent alerts (KS-10, DEMO-03) will use these rather than the agents' self-reported `agent_llm_tokens_total`, so a compromised agent can't hide its usage.
+- **Grafana access.** Anonymous Viewer access is on so the presenter can open dashboards without logging in. The port is bound to `127.0.0.1` only. Admin login uses the generated password.
+- **Analytics off.** Grafana, Loki and Tempo usage reporting are disabled (NFR-08).
+
+## D-022 Dashboards are generated from `observability/dashboards/build.py` (P2)
+
+The three OBS-05 dashboards are committed as JSON, which is what the Grafana sidecar loads, together with the small script that generates them. The script keeps the visual rules consistent across panels:
+- one y-axis per panel and 2 px lines
+- a fixed colour per agent, never cycled
+- status colours reserved: red means blocked or killed
+- stat tiles for headline numbers, and a legend on every multi-series panel
+- 5 s refresh and a shared crosshair
+
+Panels for metrics that later phases add (`guard_decisions_total`, `agent_tool_calls_total`, `killswitch_active`, `killswitch_events_total`) are already wired, and show no data until those services exist. The guard-block and kill-switch annotations work the same way.

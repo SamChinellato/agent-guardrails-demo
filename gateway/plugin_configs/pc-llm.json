@@ -25,6 +25,33 @@
     },
     "prometheus": {
       "prefer_name": true
+    },
+    "loki-logger": {
+      "endpoint_addrs": [
+        "http://loki.observability.svc.cluster.local:3100"
+      ],
+      "log_labels": {
+        "service_name": "apisix",
+        "route_id": "$route_id"
+      },
+      "log_format": {
+        "level": "info",
+        "trace_id": "$opentelemetry_trace_id",
+        "span_id": "$opentelemetry_span_id",
+        "consumer": "$consumer_name",
+        "route_id": "$route_id",
+        "method": "$request_method",
+        "uri": "$uri",
+        "status": "$status",
+        "latency_s": "$request_time",
+        "upstream": "$upstream_addr",
+        "upstream_status": "$upstream_status",
+        "upstream_latency_s": "$upstream_response_time"
+      },
+      "include_req_body": false,
+      "include_resp_body": false,
+      "inactive_timeout": 2,
+      "batch_max_size": 100
     }
   }
 }

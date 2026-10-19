@@ -2,7 +2,7 @@
 
 Apache APISIX as an AI gateway between two cooperating agents and their LLM and MCP tools, on a local k3d cluster. It shows four things: prompt-injection attacks, observability, a kill switch, and a tamper-evident evidence bundle. The full design is in [`SPEC.md`](SPEC.md). Decisions and deviations are in [`docs/DECISIONS.md`](docs/DECISIONS.md), and progress is in [`docs/REQUIREMENTS_STATUS.md`](docs/REQUIREMENTS_STATUS.md).
 
-> **Status: P1 done** (cluster and gateway core). `make tools`, `prereqs`, `prefetch`, `up`, `down`, `test`, `logs` and `pin-check` work. Other targets exit and name the phase that implements them.
+> **Status: P2 done** (cluster, gateway core, observability). Grafana is at `http://localhost:3000`, with read-only access without login; dashboards: AI Gateway Overview, Agent Behaviour, Incident. `make tools`, `prereqs`, `prefetch`, `up`, `down`, `test`, `logs` and `pin-check` work. Other targets exit and name the phase that implements them.
 
 ## Prerequisites
 

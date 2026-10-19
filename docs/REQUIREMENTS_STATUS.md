@@ -2,7 +2,7 @@
 
 Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and the test that proves it. Updated at the end of each phase.
 
-**Current phase:** P1 done (cluster and gateway core). Next: P2 (observability).
+**Current phase:** P2 done (observability). Next: P3 (MCP servers and guard).
 
 | ID | Requirement | Status | Test | Notes |
 | --- | --- | --- | --- | --- |
@@ -11,7 +11,7 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | GW-03 | Kill-switch hooks | DONE | `test_plugin_configs_prestage_disabled_fault_injection`, `test_pc_llm_kill_returns_503_within_2s_and_before_auth` | Logger plugin added to the shared set in P2. |
 | GW-04 | LLM route | TODO | `test_streaming_rejected_with_400`, `test_crude_attacks_blocked_by_prompt_guard`, `test_llm_route_timeout_is_120s` | `ai-prompt-guard`, `ai-proxy` (mock and live), stream rejection and 120 s timeout done; `ai-injection-guard` in P3 (D-015). |
 | GW-05 | MCP routes | TODO | — |  |
-| GW-06 | Gateway telemetry | TODO | — |  |
+| GW-06 | Gateway telemetry | DONE | `test_gateway_access_log_has_required_fields_and_no_bodies`, `test_trace_reaches_tempo_within_15s_with_gateway_as_parent`, `test_gateway_metrics_by_route_and_consumer` | OTel via plugin metadata (D-020); access logs via `loki-logger` (D-021). |
 | GW-07 | Admin API | TODO | — | Admin key from Secret and `allow_admin` restricted (P1); NetworkPolicy in P3 (D-017). |
 | GW-08 | Config as code | DONE | `test_bootstrap_is_idempotent_and_drift_free` | Apply-if-different, read-back drift check, kill state preserved (D-016). |
 | GW-09 | Custom plugin `ai-injection-guard` | TODO | — |  |
@@ -28,12 +28,12 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | ATK-03 | Cascade | TODO | — |  |
 | ATK-04 | Runaway agent (stretch) | TODO | — |  |
 | OBS-01 | One trace | TODO | — |  |
-| OBS-02 | Gateway spans | TODO | — |  |
-| OBS-03 | Metrics | TODO | — |  |
-| OBS-04 | Logs | TODO | — |  |
-| OBS-05 | Dashboards | TODO | — |  |
-| OBS-06 | Freshness | TODO | — |  |
-| OBS-07 | Sampling and retention | TODO | — |  |
+| OBS-02 | Gateway spans | DONE | `test_trace_reaches_tempo_within_15s_with_gateway_as_parent` | Guard spans join as children in P3. |
+| OBS-03 | Metrics | TODO | `test_gateway_metrics_by_route_and_consumer`, `test_gateway_measures_llm_tokens_per_agent` | Gateway metrics done; guard, agent and killswitch metrics arrive with those services. |
+| OBS-04 | Logs | TODO | `test_logs_for_the_trace_reach_loki_within_15s`, `test_service_logs_are_json_with_trace_context`, `test_datasources_link_logs_and_traces` | Log↔trace links configured both ways; every new service gets them through `demo-common`. |
+| OBS-05 | Dashboards | TODO | `test_dashboards_provisioned_with_5s_refresh` | All three dashboards provisioned (D-022); panels fill in as P3–P5 add metrics. |
+| OBS-06 | Freshness | DONE | `test_trace_reaches_tempo_within_15s_with_gateway_as_parent`, `test_logs_for_the_trace_reach_loki_within_15s` | Measured: Tempo 1.6 s, Loki 2.2 s. |
+| OBS-07 | Sampling and retention | DONE | always_on sampler; Helm values | 100% sampling; Tempo, Loki and Prometheus retention 24 h. |
 | KS-01 | Scopes | DEVIATION | `test_pc_llm_kill_returns_503_within_2s_and_before_auth`, `test_agent_scoped_kill_affects_only_that_agent` | Agent scope uses the `agent-kill-switch` consumer plugin, not `fault-injection` (D-013). Killswitch service in P5. |
 | KS-02 | API | TODO | — |  |
 | KS-03 | Idempotence | TODO | — |  |
@@ -72,3 +72,6 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | NFR-06 | Every service exposes `/healthz`, `/readyz` and `/metrics` | TODO | — | mock-llm done via `demo-common`; other services as they are built. |
 | NFR-07 | Resource requests and limits on every workload | TODO | — | etcd, APISIX, mock-llm have requests and limits. |
 | NFR-08 | No data leaves the machine at runtime | TODO | — | Egress exception only for `gateway` → host:11434 (D-002). |
+| DEMO-01 | Live agent chat page at `/console` (D-019) | TODO | — | Console service + agent `/chat` (P4). |
+| DEMO-02 | Typed prompt injection blocked at the agent ingress route (D-019) | TODO | — | Guards on `agent-researcher` (P3/P4). |
+| DEMO-03 | Rogue agent auto-tripped on anomalous tool-call/token rate (D-019) | TODO | — | Alert rules (P2/P5), rogue script, console switch. |

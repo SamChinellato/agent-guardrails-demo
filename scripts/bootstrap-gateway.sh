@@ -66,13 +66,19 @@ preserve_kill() {
     else . end' <<<"$2"
 }
 
+# object_id FILE ID_FIELD DESIRED: the Admin API id; "@file" means the file's basename
+# (plugin metadata is keyed by plugin name and has no id field)
+object_id() {
+  if [[ "$2" == @file ]]; then basename "$1" .json; else jq -r ".$2" <<<"$3"; fi
+}
+
 changed=0
 apply_kind() { # apply_kind KIND ID_FIELD
   local kind="$1" idf="$2" f id desired live code
   for f in "$GW/$kind"/*.json; do
     [[ "$kind" == upstreams && "$(basename "$f")" == llm.*.json ]] && continue  # ai-proxy provider fragments
     desired="$(render "$f")"
-    id="$(jq -r ".$idf" <<<"$desired")"
+    id="$(object_id "$f" "$idf" "$desired")"
     code="$(admin GET "$kind/$id")"
     live='null'; [[ "$code" == 200 ]] && live="$(jq '.value' "$TMP/resp")"
     desired="$(preserve_kill "$kind" "$desired" "$live")"
@@ -91,7 +97,7 @@ verify_kind() { # verify_kind KIND ID_FIELD: fail on any drift between gateway/ 
   local kind="$1" idf="$2" f id desired live
   for f in "$GW/$kind"/*.json; do
     [[ "$kind" == upstreams && "$(basename "$f")" == llm.*.json ]] && continue
-    desired="$(render "$f")"; id="$(jq -r ".$idf" <<<"$desired")"
+    desired="$(render "$f")"; id="$(object_id "$f" "$idf" "$desired")"
     [[ "$(admin GET "$kind/$id")" == 200 ]] || die "drift: $kind/$id missing after apply"
     live="$(jq '.value' "$TMP/resp")"
     desired="$(preserve_kill "$kind" "$desired" "$live")"
@@ -102,11 +108,13 @@ verify_kind() { # verify_kind KIND ID_FIELD: fail on any drift between gateway/ 
 
 # Dependencies first: plugin configs and consumers before the routes that use them
 log "bootstrapping gateway (LLM_MODE=$LLM_MODE)"
+apply_kind plugin_metadata @file
 apply_kind plugin_configs id
 apply_kind consumers username
 apply_kind upstreams id
 apply_kind routes id
 
+verify_kind plugin_metadata @file
 verify_kind plugin_configs id
 verify_kind consumers username
 verify_kind upstreams id

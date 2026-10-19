@@ -1,0 +1,27 @@
+# Tempo single binary (7.8, OBS-07). tempo.tag (tag@digest) is set by scripts/up.sh.
+fullnameOverride: tempo
+tempo:
+  registry: docker.io
+  repository: grafana/tempo
+  reportingEnabled: false          # NFR-08: nothing leaves the machine
+  retention: 24h
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  receivers:
+    otlp:
+      protocols:
+        grpc: {endpoint: "0.0.0.0:4317"}
+        http: {endpoint: "0.0.0.0:4318"}
+  readinessProbe:
+    httpGet: {path: /ready, port: 3200}
+    initialDelaySeconds: 5
+    periodSeconds: 3
+  liveStore:
+    # Flush recent traces quickly so search sees them within the 15 s freshness bound (OBS-06)
+    max_block_duration: 30s
+persistence:
+  enabled: true
+  size: 5Gi
+tempoQuery:
+  enabled: false

@@ -6,6 +6,11 @@ image:
 
 replicaCount: 1
 
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 5s
+
 resources:
   requests: {cpu: 100m, memory: 256Mi}
   limits: {cpu: "1", memory: 512Mi}
@@ -86,12 +91,10 @@ apisix:
               path: /opts/custom_plugins/apisix/plugins/agent-kill-switch.lua
 
   pluginAttrs:
+    # On 3.19 the collector, resource and batching come from plugin metadata
+    # (gateway/plugin_metadata/opentelemetry.json, D-020). set_ngx_var stays here because the
+    # CLI only declares $opentelemetry_trace_id/$opentelemetry_span_id in nginx.conf from it.
     opentelemetry:
-      resource:
-        service.name: apisix
-      collector:
-        address: otel-collector.observability.svc.cluster.local:4318
-        request_timeout: 3
       set_ngx_var: true
     prometheus:
       export_uri: /apisix/prometheus/metrics

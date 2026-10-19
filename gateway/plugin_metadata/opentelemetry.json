@@ -1,0 +1,7 @@
+{
+  "trace_id_source": "random",
+  "resource": {"service.name": "apisix", "deployment.environment": "ai-gateway-demo"},
+  "collector": {"address": "otel-collector.observability.svc.cluster.local:4318", "request_timeout": 3},
+  "batch_span_processor": {"batch_timeout": 1, "inactive_timeout": 1, "max_export_batch_size": 64, "max_queue_size": 2048, "drop_on_queue_full": true},
+  "set_ngx_var": true
+}
