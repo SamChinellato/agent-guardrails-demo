@@ -30,7 +30,7 @@
       }
     ]
   },
-  "description": "Kill-switch state over time, with guard blocks and kill-switch events as annotations.",
+  "description": "",
   "editable": false,
   "graphTooltip": 1,
   "links": [
@@ -48,19 +48,6 @@
     }
   ],
   "panels": [
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "panels": [],
-      "title": "Status",
-      "type": "row"
-    },
     {
       "datasource": {
         "type": "prometheus",
@@ -92,11 +79,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 8,
         "x": 0,
-        "y": 1
+        "y": 0
       },
-      "id": 2,
+      "id": 1,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
@@ -123,7 +110,7 @@
           "refId": "A"
         }
       ],
-      "title": "Active kill switches",
+      "title": "Kill switches on",
       "type": "stat"
     },
     {
@@ -157,11 +144,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 1
+        "w": 8,
+        "x": 8,
+        "y": 0
       },
-      "id": 3,
+      "id": 2,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
@@ -188,7 +175,7 @@
           "refId": "A"
         }
       ],
-      "title": "Firing alerts",
+      "title": "Alerts firing",
       "type": "stat"
     },
     {
@@ -222,11 +209,11 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 1
+        "w": 8,
+        "x": 16,
+        "y": 0
       },
-      "id": 4,
+      "id": 3,
       "options": {
         "colorMode": "value",
         "graphMode": "none",
@@ -254,67 +241,6 @@
         }
       ],
       "title": "Guard blocks (15 min)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "#8e8c84",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 1
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(killswitch_events_total[15m])) or vector(0)",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Kill-switch events (15 min)",
       "type": "stat"
     },
     {
@@ -366,9 +292,9 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 4
       },
-      "id": 6,
+      "id": 4,
       "options": {
         "legend": {
           "showLegend": false
@@ -388,7 +314,7 @@
           "refId": "A"
         }
       ],
-      "title": "Kill-switch state by scope",
+      "title": "Kill switch",
       "type": "state-timeline"
     },
     {
@@ -480,12 +406,12 @@
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 9,
+        "w": 24,
         "x": 0,
-        "y": 11
+        "y": 10
       },
-      "id": 7,
+      "id": 5,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -508,148 +434,8 @@
           "refId": "A"
         }
       ],
-      "title": "Requests cut off by the kill switch (503) by agent",
+      "title": "Cut off by the kill switch",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisSoftMin": 0,
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 8,
-            "lineWidth": 2,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none"
-            }
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 11
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (check) (rate(guard_decisions_total{verdict=\"block\"}[1m])) * 60",
-          "legendFormat": "{{check}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Guard blocks / min by check",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 19
-      },
-      "id": 9,
-      "panels": [],
-      "title": "Audit trail",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "description": "",
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 20
-      },
-      "id": 10,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{service_name=\"killswitch\"} | json",
-          "refId": "A"
-        }
-      ],
-      "title": "Kill-switch audit events",
-      "type": "logs"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "description": "",
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 20
-      },
-      "id": 11,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{service_name=\"guard\"} | json | verdict=~\"block|flag\"",
-          "refId": "A"
-        }
-      ],
-      "title": "Guard decisions",
-      "type": "logs"
     }
   ],
   "refresh": "5s",

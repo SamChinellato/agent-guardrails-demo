@@ -9,11 +9,11 @@ servers: 1
 agents: 0
 image: ${K3S_IMAGE}@${K3S_DIGEST}
 ports:
-  - port: 127.0.0.1:${HOST_PORT_GATEWAY}:30080   # APISIX gateway
+  - port: ${HOST_BIND}:${HOST_PORT_GATEWAY}:30080   # APISIX gateway
     nodeFilters: [loadbalancer]
-  - port: 127.0.0.1:${HOST_PORT_GRAFANA}:30300   # Grafana
+  - port: ${HOST_BIND}:${HOST_PORT_GRAFANA}:30300   # Grafana
     nodeFilters: [loadbalancer]
-  - port: 127.0.0.1:${HOST_PORT_PANEL}:30090     # killswitch control panel
+  - port: ${HOST_BIND}:${HOST_PORT_PANEL}:30090     # killswitch control panel
     nodeFilters: [loadbalancer]
 registries:
   # Created beforehand by up.sh (k3d's inline registry creation fails on Podman, D-009)

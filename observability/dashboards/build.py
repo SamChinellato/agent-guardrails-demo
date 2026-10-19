@@ -5,7 +5,8 @@
 The JSON is what Grafana loads (via the sidecar); this script is the readable source.
 Conventions (from the dataviz method): one y-axis per panel, 2px lines, fixed colour per
 agent (never cycled), status colours reserved for states (red = blocked/killed), headline
-numbers as stat tiles, legends on every multi-series panel.
+numbers as stat tiles, legends on every multi-series panel. Screens stay minimal: logs and
+traces are one click away in Explore, not on the dashboards.
 """
 
 import json
@@ -15,7 +16,6 @@ OUT = Path(__file__).parent
 
 PROM = {"type": "prometheus", "uid": "prometheus"}
 LOKI = {"type": "loki", "uid": "loki"}
-TEMPO = {"type": "tempo", "uid": "tempo"}
 
 # Categorical slots 1-4 (dark-mode steps of the reference palette), fixed per agent
 AGENT_COLORS = {"researcher": "#3987e5", "executor": "#d95926", "probe": "#199e70", "demo-user": "#c98500"}
@@ -124,35 +124,6 @@ def stat(title, expr, unit="short", color=NEUTRAL, thresholds=None, description=
     }
 
 
-def logs(title, expr, description=""):
-    return {
-        "type": "logs",
-        "title": title,
-        "description": description,
-        "datasource": LOKI,
-        "targets": [{"datasource": LOKI, "expr": expr, "refId": "A"}],
-        "options": {
-            "showTime": True,
-            "wrapLogMessage": True,
-            "prettifyLogMessage": False,
-            "enableLogDetails": True,
-            "sortOrder": "Descending",
-            "dedupStrategy": "none",
-        },
-    }
-
-
-def traces(title, query, limit=20):
-    return {
-        "type": "table",
-        "title": title,
-        "datasource": TEMPO,
-        "targets": [{"datasource": TEMPO, "queryType": "traceql", "query": query, "limit": limit, "refId": "A"}],
-        "fieldConfig": {"defaults": {}, "overrides": []},
-        "options": {"showHeader": True, "sortBy": [{"displayName": "Start time", "desc": True}]},
-    }
-
-
 def dashboard(uid, title, description, panels, annotations=None, tags=("ai-gateway-demo",)):
     return {
         "uid": uid,
@@ -211,165 +182,72 @@ KILL_ANNOTATION = {
 def overview() -> dict:
     lay = Layout()
     p = [
-        lay.row("Right now"),
-        lay.place(stat("Requests / s", "sum(rate(apisix_http_status[1m]))", unit="reqps", decimals=1), 4, 4),
+        lay.place(stat("Requests / s", "sum(rate(apisix_http_status[1m]))", unit="reqps", decimals=1), 6, 4),
         lay.place(
-            stat(
-                "Server errors (5xx share)",
-                'sum(rate(apisix_http_status{code=~"5.."}[5m])) / clamp_min(sum(rate(apisix_http_status[5m])), 1e-9)',
-                unit="percentunit",
-                thresholds=[{"color": GOOD, "value": None}, {"color": WARN, "value": 0.01}, {"color": CRIT, "value": 0.05}],
-                decimals=1,
-            ),
-            5, 4,
+            stat("Blocked (15 min)", 'sum(increase(apisix_http_status{code=~"400|403"}[15m])) or vector(0)',
+                 thresholds=[{"color": NEUTRAL, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
+            6, 4,
         ),
         lay.place(
-            stat(
-                "Blocked by guards (15 min)",
-                'sum(increase(apisix_http_status{code=~"400|403"}[15m])) or vector(0)',
-                thresholds=[{"color": NEUTRAL, "value": None}, {"color": CRIT, "value": 1}],
-                description="Requests rejected by ai-prompt-guard (400), ai-injection-guard or consumer restriction (403).",
-                decimals=0,
-            ),
-            5, 4,
+            stat("Kill switches on", "sum(killswitch_active) or vector(0)",
+                 thresholds=[{"color": GOOD, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
+            6, 4,
         ),
+        lay.place(stat("LLM tokens / min", f"sum({TOKENS_PER_MIN_BY_AGENT}) or vector(0)", decimals=0), 6, 4),
         lay.place(
-            stat(
-                "Active kill switches",
-                "sum(killswitch_active) or vector(0)",
-                thresholds=[{"color": GOOD, "value": None}, {"color": CRIT, "value": 1}],
-                description="Scopes currently tripped (global, tools, agent:<name>).",
-                decimals=0,
-            ),
-            5, 4,
+            timeseries("Requests by agent",
+                       [prom('sum by (consumer) (rate(apisix_http_status{consumer!=""}[1m]))', "{{consumer}}")],
+                       unit="reqps", overrides=agent_overrides()),
+            12, 10,
         ),
-        lay.place(
-            stat("LLM tokens / min", f"sum({TOKENS_PER_MIN_BY_AGENT})", decimals=0,
-                 description="Prompt + completion tokens measured at the gateway."),
-            5, 4,
-        ),
-        lay.row("Traffic"),
-        lay.place(timeseries("Requests / s by route", [prom("sum by (route) (rate(apisix_http_status[1m]))", "{{route}}")], unit="reqps"), 12, 8),
         lay.place(
             timeseries(
-                "Responses by status class",
+                "Allowed · blocked · killed",
                 [
-                    prom('sum(rate(apisix_http_status{code=~"2.."}[1m]))', "2xx"),
-                    prom('sum(rate(apisix_http_status{code=~"4.."}[1m]))', "4xx (denied / invalid)", "B"),
-                    prom('sum(rate(apisix_http_status{code=~"5.."}[1m]))', "5xx (incl. kill switch)", "C"),
+                    prom('sum(rate(apisix_http_status{code=~"2.."}[1m]))', "allowed"),
+                    prom('sum(rate(apisix_http_status{code=~"400|403"}[1m]))', "blocked", "B"),
+                    prom('sum(rate(apisix_http_status{code="503"}[1m]))', "killed", "C"),
                 ],
                 unit="reqps",
-                overrides=named_color_overrides({"2xx": GOOD, "4xx (denied / invalid)": WARN, "5xx (incl. kill switch)": CRIT}),
+                overrides=named_color_overrides({"allowed": GOOD, "blocked": WARN, "killed": CRIT}),
             ),
-            12, 8,
+            12, 10,
         ),
-        lay.place(
-            timeseries(
-                "Requests / s by agent",
-                [prom('sum by (consumer) (rate(apisix_http_status{consumer!=""}[1m]))', "{{consumer}}")],
-                unit="reqps",
-                overrides=agent_overrides(),
-            ),
-            12, 8,
-        ),
-        lay.place(
-            timeseries(
-                "p95 latency by route",
-                [prom('histogram_quantile(0.95, sum by (le, route) (rate(apisix_http_latency_bucket{type="request"}[1m])))', "{{route}}")],
-                unit="ms",
-                description="End-to-end latency through the gateway, including the upstream.",
-            ),
-            12, 8,
-        ),
-        lay.row("Evidence trail"),
-        lay.place(
-            logs(
-                "Gateway access log",
-                '{service_name="apisix"} | json | line_format '
-                '"{{.status}} {{.method}} {{.uri}}  consumer={{.consumer}}  {{.latency_s}}s  trace_id={{.trace_id}}"',
-                "No bodies are logged (GW-06). Expand a line and click the trace link to open it in Tempo.",
-            ),
-            14, 10,
-        ),
-        lay.place(traces("Recent gateway traces", '{resource.service.name="apisix"}'), 10, 10),
     ]
-    return dashboard(
-        "ai-gateway-overview",
-        "AI Gateway Overview",
-        "All agent-to-LLM, agent-to-tool and agent-to-agent traffic through APISIX.",
-        p,
-        annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION],
-    )
+    return dashboard("ai-gateway-overview", "AI Gateway Overview", "", p,
+                     annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION])
 
 
 def agent_behaviour() -> dict:
     lay = Layout()
     p = [
-        lay.row("Model usage (measured at the gateway)"),
         lay.place(
-            timeseries(
-                "LLM tokens / min by agent",
-                [prom(TOKENS_PER_MIN_BY_AGENT, "{{consumer}}")],
-                overrides=agent_overrides(),
-                description=f"Dashed line: TokenBurn alert threshold ({TOKEN_BURN_PER_MIN}/min, KS-10).",
-                thresholds=[{"color": "transparent", "value": None}, {"color": CRIT, "value": TOKEN_BURN_PER_MIN}],
-            ),
-            12, 9,
+            timeseries("Tokens / min", [prom(TOKENS_PER_MIN_BY_AGENT, "{{consumer}}")], overrides=agent_overrides(),
+                       thresholds=[{"color": "transparent", "value": None}, {"color": CRIT, "value": TOKEN_BURN_PER_MIN}]),
+            12, 11,
         ),
         lay.place(
-            timeseries(
-                "LLM calls / min by agent",
-                [prom('sum by (consumer) (rate(apisix_http_status{route=~"llm.*"}[1m])) * 60', "{{consumer}}")],
-                overrides=agent_overrides(),
-            ),
-            12, 9,
-        ),
-        lay.row("Tool use"),
-        lay.place(
-            timeseries(
-                "Tool calls / min by agent",
-                [prom('sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*"}[1m])) * 60', "{{consumer}}")],
-                overrides=agent_overrides(),
-                description="MCP requests seen by the gateway. A rogue agent cannot under-report these.",
-            ),
-            12, 9,
+            timeseries("Tool calls / min",
+                       [prom('sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*"}[1m])) * 60', "{{consumer}}")],
+                       overrides=agent_overrides()),
+            12, 11,
         ),
         lay.place(
-            timeseries(
-                "Tool calls by outcome",
-                [prom("sum by (tool, outcome) (rate(agent_tool_calls_total[1m])) * 60", "{{tool}} · {{outcome}}")],
-                description="Reported by the agents (OBS-03): ok, denied by policy, error, halted.",
-            ),
-            12, 9,
-        ),
-        lay.row("Policy"),
-        lay.place(
-            timeseries(
-                "Guard decisions / min",
-                [prom("sum by (agent, verdict) (rate(guard_decisions_total[1m])) * 60", "{{agent}} · {{verdict}}")],
-                description="allow, flag (monitor mode) and block, per agent (GRD-05).",
-            ),
-            12, 9,
-        ),
-        lay.place(
-            logs("Agent activity", '{service_name=~"researcher|executor"} | json'),
-            12, 9,
+            timeseries("Guard blocks / min",
+                       [prom('sum by (agent) (rate(guard_decisions_total{verdict="block"}[1m])) * 60', "{{agent}}")],
+                       overrides=agent_overrides()),
+            24, 9,
         ),
     ]
-    return dashboard(
-        "agent-behaviour",
-        "Agent Behaviour",
-        "What each agent is doing: tokens, LLM calls, tool calls and policy decisions.",
-        p,
-        annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION],
-    )
+    return dashboard("agent-behaviour", "Agent Behaviour", "", p,
+                     annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION])
 
 
 def incident() -> dict:
     lay = Layout()
     state = {
         "type": "state-timeline",
-        "title": "Kill-switch state by scope",
+        "title": "Kill switch",
         "datasource": PROM,
         "targets": [prom("max by (scope) (killswitch_active)", "{{scope}}")],
         "fieldConfig": {
@@ -386,53 +264,30 @@ def incident() -> dict:
         "options": {"showValue": "auto", "mergeValues": True, "rowHeight": 0.8, "legend": {"showLegend": False}},
     }
     p = [
-        lay.row("Status"),
         lay.place(
-            stat("Active kill switches", "sum(killswitch_active) or vector(0)",
+            stat("Kill switches on", "sum(killswitch_active) or vector(0)",
                  thresholds=[{"color": GOOD, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
-            6, 4,
+            8, 4,
         ),
         lay.place(
-            stat("Firing alerts", 'count(ALERTS{alertstate="firing"}) or vector(0)',
+            stat("Alerts firing", 'count(ALERTS{alertstate="firing"}) or vector(0)',
                  thresholds=[{"color": GOOD, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
-            6, 4,
+            8, 4,
         ),
         lay.place(
             stat("Guard blocks (15 min)", 'sum(increase(guard_decisions_total{verdict="block"}[15m])) or vector(0)',
                  thresholds=[{"color": NEUTRAL, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
-            6, 4,
-        ),
-        lay.place(
-            stat("Kill-switch events (15 min)", "sum(increase(killswitch_events_total[15m])) or vector(0)", decimals=0),
-            6, 4,
+            8, 4,
         ),
         lay.place(state, 24, 6),
         lay.place(
-            timeseries(
-                "Requests cut off by the kill switch (503) by agent",
-                [prom('sum by (consumer) (rate(apisix_http_status{code="503"}[1m])) * 60', "{{consumer}}")],
-                overrides=agent_overrides(),
-            ),
-            12, 8,
+            timeseries("Cut off by the kill switch",
+                       [prom('sum by (consumer) (rate(apisix_http_status{code="503"}[1m])) * 60', "{{consumer}}")],
+                       overrides=agent_overrides()),
+            24, 9,
         ),
-        lay.place(
-            timeseries(
-                "Guard blocks / min by check",
-                [prom('sum by (check) (rate(guard_decisions_total{verdict="block"}[1m])) * 60', "{{check}}")],
-            ),
-            12, 8,
-        ),
-        lay.row("Audit trail"),
-        lay.place(logs("Kill-switch audit events", '{service_name="killswitch"} | json'), 12, 10),
-        lay.place(logs("Guard decisions", '{service_name="guard"} | json | verdict=~"block|flag"'), 12, 10),
     ]
-    return dashboard(
-        "incident",
-        "Incident",
-        "Kill-switch state over time, with guard blocks and kill-switch events as annotations.",
-        p,
-        annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION],
-    )
+    return dashboard("incident", "Incident", "", p, annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION])
 
 
 if __name__ == "__main__":

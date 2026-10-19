@@ -214,3 +214,26 @@ The three OBS-05 dashboards are committed as JSON, which is what the Grafana sid
 - 5 s refresh and a shared crosshair
 
 Panels for metrics that later phases add (`guard_decisions_total`, `agent_tool_calls_total`, `killswitch_active`, `killswitch_events_total`) are already wired, and show no data until those services exist. The guard-block and kill-switch annotations work the same way.
+
+## D-023 Host ports listen on all interfaces by default (P2)
+
+At the operator's request, the gateway, Grafana and control-panel ports bind to `HOST_BIND=0.0.0.0` by default, so the demo can be opened from another machine on the local network, such as a presenter laptop. `make up` prints the LAN URLs. Set `HOST_BIND=127.0.0.1` to keep it on this machine only. k3d fixes port mappings when it creates the cluster, so `up.sh` refuses to continue when the existing cluster's binding differs, and says to run `make down && make up`.
+
+Consequences:
+- Grafana's anonymous Viewer access (D-021) is visible to the LAN.
+- Gateway calls still need consumer keys, and the control panel needs the operator token (KS-08).
+- Rule 6 is unaffected. The APISIX Admin API is never mapped to the host, and the image registry stays on `127.0.0.1:5000`.
+
+Verified from the LAN address `192.168.1.233`: the gateway answered 401 to a request without a key, and Grafana's health endpoint returned 200.
+
+## D-024 Dashboards stay minimal (P2, supersedes the layout in D-022)
+
+At the operator's request, each dashboard tells one story with a handful of panels and no log walls, trace tables or panel descriptions. Logs and traces stay one click away in Explore and through the log↔trace links (OBS-04).
+
+| Dashboard | Panels |
+| --- | --- |
+| AI Gateway Overview | Requests/s · Blocked (15 min) · Kill switches on · LLM tokens/min; Requests by agent; Allowed · blocked · killed |
+| Agent Behaviour | Tokens/min (with the TokenBurn threshold) · Tool calls/min · Guard blocks/min, per agent |
+| Incident | Kill switches on · Alerts firing · Guard blocks; Kill-switch state timeline; Cut off by the kill switch |
+
+Guard blocks and kill-switch events appear as annotations on every dashboard.

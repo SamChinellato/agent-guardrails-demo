@@ -77,8 +77,8 @@ grafana:
   grafana.ini:
     analytics: {reporting_enabled: false, check_for_updates: false, check_for_plugin_updates: false}
     news: {news_feed_enabled: false}
-    # Read-only anonymous access so the presenter can open dashboards without logging in;
-    # the port is bound to 127.0.0.1 only (k3d/cluster.yaml)
+    # Read-only anonymous access so the presenter can open dashboards without logging in.
+    # With HOST_BIND=0.0.0.0 that includes anyone on the local network (D-023).
     auth.anonymous: {enabled: true, org_role: Viewer}
     dashboards: {min_refresh_interval: 5s}
   # Datasources and dashboards come from ConfigMaps via the sidecar (7.8, OBS-05)

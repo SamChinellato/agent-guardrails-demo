@@ -10,7 +10,7 @@ LLM_MODE="${LLM_MODE:-mock}"
 "$ROOT/scripts/prereqs.sh" "$LLM_MODE" >/dev/null || { "$ROOT/scripts/prereqs.sh" "$LLM_MODE"; exit 1; }
 detect_runtime || die "no container runtime"
 llm_host_settings
-export K3S_IMAGE K3S_DIGEST HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL
+export K3S_IMAGE K3S_DIGEST HOST_BIND HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL
 # k3d's own helper images, pinned (REP-02)
 export K3D_IMAGE_LOADBALANCER="$(pinned_ref K3D_PROXY)" K3D_IMAGE_TOOLS="$(pinned_ref K3D_TOOLS)"
 
@@ -30,6 +30,12 @@ if k3d cluster list -o json 2>/dev/null | jq -e --arg n "$CLUSTER_NAME" '.[] | s
   else
     log "cluster $CLUSTER_NAME exists"
   fi
+  # Port mappings are fixed at creation: refuse to silently keep a different bind/port
+  want="$HOST_BIND:$HOST_PORT_GATEWAY $HOST_BIND:$HOST_PORT_GRAFANA $HOST_BIND:$HOST_PORT_PANEL"
+  have="$(runtime_cli port "k3d-$CLUSTER_NAME-serverlb" 2>/dev/null | awk '{print $3}' | sort | tr '\n' ' ')"
+  for w in $want; do
+    [[ " $have " == *" $w "* ]] || die "cluster ports ($have) differ from requested ($want). Run: make down && make up"
+  done
 else
   log "creating cluster $CLUSTER_NAME ($CONTAINER_RUNTIME, rootless=$RUNTIME_ROOTLESS)"
   extra=()
@@ -98,6 +104,11 @@ kubectl -n gateway rollout status deployment/apisix --timeout=300s >/dev/null
 "$ROOT/scripts/bootstrap-gateway.sh"
 "$ROOT/scripts/smoke.sh"
 
+lan=""
+if [[ "$HOST_BIND" == 0.0.0.0 ]]; then
+  ip="$( (hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null) | awk '{print $1}')"
+  [[ -n "$ip" ]] && lan="  From the LAN: http://$ip:$HOST_PORT_GATEWAY (gateway), http://$ip:$HOST_PORT_GRAFANA (Grafana)"
+fi
 cat <<EOF
 
 Demo is up (LLM_MODE=$LLM_MODE, runtime=$CONTAINER_RUNTIME).
@@ -105,4 +116,5 @@ Demo is up (LLM_MODE=$LLM_MODE, runtime=$CONTAINER_RUNTIME).
   Grafana:     http://localhost:$HOST_PORT_GRAFANA  (anonymous viewer; admin password in .secrets/grafana-admin-password)
   KUBECONFIG:  $KUBECONFIG
   Secrets:     $ROOT/.secrets/ (mode 600)
+$lan
 EOF

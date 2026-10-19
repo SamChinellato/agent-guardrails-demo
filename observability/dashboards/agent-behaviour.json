@@ -30,7 +30,7 @@
       }
     ]
   },
-  "description": "What each agent is doing: tokens, LLM calls, tool calls and policy decisions.",
+  "description": "",
   "editable": false,
   "graphTooltip": 1,
   "links": [
@@ -49,24 +49,11 @@
   ],
   "panels": [
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "panels": [],
-      "title": "Model usage (measured at the gateway)",
-      "type": "row"
-    },
-    {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Dashed line: TokenBurn alert threshold (3000/min, KS-10).",
+      "description": "",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -166,12 +153,12 @@
         ]
       },
       "gridPos": {
-        "h": 9,
+        "h": 11,
         "w": 12,
         "x": 0,
-        "y": 1
+        "y": 0
       },
-      "id": 2,
+      "id": 1,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -194,7 +181,7 @@
           "refId": "A"
         }
       ],
-      "title": "LLM tokens / min by agent",
+      "title": "Tokens / min",
       "type": "timeseries"
     },
     {
@@ -286,145 +273,12 @@
         ]
       },
       "gridPos": {
-        "h": 9,
+        "h": 11,
         "w": 12,
         "x": 12,
-        "y": 1
+        "y": 0
       },
-      "id": 3,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (consumer) (rate(apisix_http_status{route=~\"llm.*\"}[1m])) * 60",
-          "legendFormat": "{{consumer}}",
-          "refId": "A"
-        }
-      ],
-      "title": "LLM calls / min by agent",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 10
-      },
-      "id": 4,
-      "panels": [],
-      "title": "Tool use",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "MCP requests seen by the gateway. A rogue agent cannot under-report these.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisSoftMin": 0,
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 8,
-            "lineWidth": 2,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none"
-            }
-          },
-          "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "researcher"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#3987e5",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "executor"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#d95926",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "probe"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#199e70",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "demo-user"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "#c98500",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 11
-      },
-      "id": 5,
+      "id": 2,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -447,173 +301,128 @@
           "refId": "A"
         }
       ],
-      "title": "Tool calls / min by agent",
+      "title": "Tool calls / min",
       "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
-      },
-      "description": "Reported by the agents (OBS-03): ok, denied by policy, error, halted.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisSoftMin": 0,
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 8,
-            "lineWidth": 2,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none"
-            }
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 11
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (tool, outcome) (rate(agent_tool_calls_total[1m])) * 60",
-          "legendFormat": "{{tool}} \u00b7 {{outcome}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Tool calls by outcome",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 20
-      },
-      "id": 7,
-      "panels": [],
-      "title": "Policy",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "description": "allow, flag (monitor mode) and block, per agent (GRD-05).",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisSoftMin": 0,
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 8,
-            "lineWidth": 2,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none"
-            }
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 21
-      },
-      "id": 8,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (agent, verdict) (rate(guard_decisions_total[1m])) * 60",
-          "legendFormat": "{{agent}} \u00b7 {{verdict}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Guard decisions / min",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
       },
       "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisSoftMin": 0,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "researcher"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#3987e5",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "executor"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#d95926",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "probe"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#199e70",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "demo-user"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#c98500",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "gridPos": {
         "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 21
+        "w": 24,
+        "x": 0,
+        "y": 11
       },
-      "id": 9,
+      "id": 3,
       "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "loki"
+            "type": "prometheus",
+            "uid": "prometheus"
           },
-          "expr": "{service_name=~\"researcher|executor\"} | json",
+          "expr": "sum by (agent) (rate(guard_decisions_total{verdict=\"block\"}[1m])) * 60",
+          "legendFormat": "{{agent}}",
           "refId": "A"
         }
       ],
-      "title": "Agent activity",
-      "type": "logs"
+      "title": "Guard blocks / min",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",

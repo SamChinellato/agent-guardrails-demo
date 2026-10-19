@@ -17,6 +17,9 @@ REGISTRY_PUSH="127.0.0.1:$REGISTRY_PORT" # host side; *.localhost may resolve to
 REGISTRY_PULL="$REGISTRY_NAME:$REGISTRY_PORT"
 
 # Host ports (7.1). Spec defaults; override when a port is taken on the host (D-011).
+# HOST_BIND: address the gateway, Grafana and panel ports listen on. 0.0.0.0 makes the demo
+# reachable from the local network (D-023); 127.0.0.1 keeps it on this machine only.
+HOST_BIND="${HOST_BIND:-0.0.0.0}"
 HOST_PORT_GATEWAY="${HOST_PORT_GATEWAY:-8080}"
 HOST_PORT_GRAFANA="${HOST_PORT_GRAFANA:-3000}"
 HOST_PORT_PANEL="${HOST_PORT_PANEL:-8090}"
