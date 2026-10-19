@@ -1,0 +1,20 @@
+{
+  "id": "guard",
+  "name": "guard",
+  "desc": "Guard service: MCP inspecting proxy (F3)",
+  "type": "roundrobin",
+  "nodes": {
+    "guard.ai.svc.cluster.local:8000": 1
+  },
+  "scheme": "http",
+  "timeout": {
+    "connect": 5,
+    "send": 60,
+    "read": 60
+  },
+  "keepalive_pool": {
+    "size": 32,
+    "idle_timeout": 60,
+    "requests": 1000
+  }
+}

@@ -83,16 +83,40 @@ source "$ROOT/.cache/image-tags.env"
 # ---------------------------------------------------------------- workloads
 log "ai services"
 render_manifest() {
-  sed -e "s|\${MOCK_LLM_IMAGE}|$REGISTRY_PULL/mock-llm:$MOCK_LLM_TAG|g" "$1"
+  sed -e "s|\${MOCK_LLM_IMAGE}|$REGISTRY_PULL/mock-llm:$MOCK_LLM_TAG|g" \
+      -e "s|\${GUARD_IMAGE}|$REGISTRY_PULL/guard:$GUARD_TAG|g" \
+      -e "s|\${MCP_DOCS_IMAGE}|$REGISTRY_PULL/mcp-docs:$MCP_DOCS_TAG|g" \
+      -e "s|\${MCP_ACTIONS_IMAGE}|$REGISTRY_PULL/mcp-actions:$MCP_ACTIONS_TAG|g" "$1"
 }
-kubectl -n ai create configmap mock-llm-scripts --from-file="$ROOT/scenarios/fixtures/mock-llm" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-render_manifest "$ROOT/deploy/manifests/30-mock-llm.yaml" | kubectl apply -f - >/dev/null
-kubectl -n ai rollout status deployment/mock-llm --timeout=180s >/dev/null
+apply_cm() { # apply_cm NAMESPACE NAME SOURCE...
+  local ns="$1" name="$2"; shift 2
+  local args=(); for s in "$@"; do args+=("--from-file=$s"); done
+  kubectl -n "$ns" create configmap "$name" "${args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+apply_cm ai mock-llm-scripts "$ROOT/scenarios/fixtures/mock-llm"
+apply_cm ai fixtures-documents "$ROOT/scenarios/fixtures/documents"
+apply_cm ai fixtures-records "$ROOT/scenarios/fixtures/records.json"
+# The live policy may differ from git after `make policy-set`; only seed it if missing
+# (`make reset` restores it from policy/policy.yaml).
+kubectl -n ai get configmap guard-policy >/dev/null 2>&1 || apply_cm ai guard-policy "$ROOT/policy/policy.yaml"
+for m in 30-mock-llm 20-guard 21-mcp-servers; do render_manifest "$ROOT/deploy/manifests/$m.yaml" | kubectl apply -f - >/dev/null; done
+for d in mock-llm mcp-docs mcp-actions guard; do kubectl -n ai rollout status "deployment/$d" --timeout=300s >/dev/null; done
+
+log "network policies"
+case "$CONTAINER_RUNTIME" in
+  podman) ollama_egress="$OLLAMA_HOST_IP/32" ;;
+  *) ip="$(kubectl -n kube-system get configmap coredns -o jsonpath='{.data.NodeHosts}' | awk '$2=="host.k3d.internal"{print $1}')"
+     ollama_egress="${ip:-192.0.2.1}/32" ;;   # 192.0.2.1: TEST-NET, matches nothing
+esac
+sed "s|\${OLLAMA_EGRESS}|$ollama_egress|" "$ROOT/deploy/manifests/50-networkpolicies.yaml" | kubectl apply -f - >/dev/null
+"$ROOT/scripts/verify-netpol.sh"
 
 log "apisix"
-kubectl -n gateway create configmap apisix-custom-plugins --from-file="$ROOT/gateway/plugins" \
-  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+for lua in "$ROOT"/gateway/plugins/*.lua; do
+  kubectl -n gateway create configmap "apisix-plugin-$(basename "$lua" .lua)" --from-file="$lua" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+done
+kubectl -n gateway delete configmap apisix-custom-plugins --ignore-not-found >/dev/null
 # subPath mounts don't follow ConfigMap updates: a checksum annotation rolls the pod on change
 plugins_sha="$(cat "$ROOT"/gateway/plugins/*.lua | sha256sum | cut -c1-16)"
 helm_install apisix gateway apisix APISIX "$ROOT/deploy/helm-values/apisix.yaml" \

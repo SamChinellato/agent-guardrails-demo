@@ -1,0 +1,120 @@
+# MCP servers (7.6). ${MCP_DOCS_IMAGE} / ${MCP_ACTIONS_IMAGE} are substituted by up.sh.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-docs
+  namespace: ai
+  labels: {app: mcp-docs, demo/metrics: "true"}
+spec:
+  selector: {app: mcp-docs}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-docs
+  namespace: ai
+  labels: {app: mcp-docs}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mcp-docs}
+  template:
+    metadata:
+      labels: {app: mcp-docs}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mcp-docs
+          image: ${MCP_DOCS_IMAGE}
+          env:
+            - {name: DOCS_DIR, value: /fixtures/documents}
+            - {name: MCP_ALLOWED_HOSTS, value: "mcp-docs.ai.svc.cluster.local:8000,mcp-docs.ai.svc:8000,mcp-docs:8000"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: documents, mountPath: /fixtures/documents, readOnly: true}
+      volumes:
+        - name: documents
+          configMap: {name: fixtures-documents}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-actions
+  namespace: ai
+  labels: {app: mcp-actions, demo/metrics: "true"}
+spec:
+  selector: {app: mcp-actions}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-actions
+  namespace: ai
+  labels: {app: mcp-actions}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mcp-actions}
+  template:
+    metadata:
+      labels: {app: mcp-actions}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mcp-actions
+          image: ${MCP_ACTIONS_IMAGE}
+          env:
+            - {name: RECORDS_FILE, value: /fixtures/records.json}
+            - {name: OUTBOX_FILE, value: /data/outbox.jsonl}
+            - {name: MCP_ALLOWED_HOSTS, value: "mcp-actions.ai.svc.cluster.local:8000,mcp-actions.ai.svc:8000,mcp-actions:8000"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: records, mountPath: /fixtures, readOnly: true}
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: records
+          configMap: {name: fixtures-records}
+        - name: data
+          emptyDir: {}

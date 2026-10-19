@@ -1,0 +1,22 @@
+# Guard policy (GRD-02, 7.3). Copied into ConfigMap guard-policy; the guard hot-reloads it.
+# Change modes with: make policy-set CHECK=<check> MODE=enforce|monitor|off
+version: 1
+checks:
+  llm.user_prompt_injection:   { mode: enforce, threshold: 0.90, severity: high }
+  llm.tool_message_injection:  { mode: enforce, threshold: 0.85, severity: high }
+  mcp.tool_result_injection:   { mode: enforce, threshold: 0.85, severity: high }
+  mcp.tool_allowlist:          { mode: enforce, severity: critical }
+  mcp.argument_rules:          { mode: enforce, severity: critical }
+  agent.user_prompt_injection: { mode: enforce, threshold: 0.90, severity: high }   # DEMO-02
+agents:
+  researcher:
+    tools: [docs.list_documents, docs.read_document]
+  executor:
+    tools: [actions.update_record, actions.send_email]
+    argument_rules:
+      actions.send_email:    { to_domain_allow: [demo.local] }
+      actions.update_record: { fields_allow: [status, notes] }
+  probe:
+    tools: []            # the killswitch probe only needs to reach the routes (KS-04)
+deny_tools_all: [actions.export_customer_data]
+auto_trip: { on_severity: critical, scope: agent, dedupe_seconds: 60 }

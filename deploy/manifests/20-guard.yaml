@@ -1,0 +1,68 @@
+# Guard (7.3). ${GUARD_IMAGE} is substituted by scripts/up.sh. The policy ConfigMap is
+# mounted as a directory (not subPath) so kubelet updates it in place (GRD-02 hot reload).
+apiVersion: v1
+kind: Service
+metadata:
+  name: guard
+  namespace: ai
+  labels: {app: guard, demo/metrics: "true"}
+spec:
+  selector: {app: guard}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guard
+  namespace: ai
+  labels: {app: guard}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: guard}
+  template:
+    metadata:
+      labels: {app: guard}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: guard
+          image: ${GUARD_IMAGE}
+          env:
+            - {name: MODEL_DIR, value: /models/onnx}
+            - {name: POLICY_FILE, value: /policy/policy.yaml}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+            # KILLSWITCH_URL / KILLSWITCH_TOKEN arrive with the killswitch in P5 (GRD-06)
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:          # ready only after model load + policy parse (GRD-08)
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+            failureThreshold: 3
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 250m, memory: 768Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: policy, mountPath: /policy, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: policy
+          configMap: {name: guard-policy}
+        - name: tmp
+          emptyDir: {}

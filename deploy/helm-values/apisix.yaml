@@ -76,8 +76,8 @@ apisix:
     - http-logger
     - loki-logger
 
-  # Custom Lua plugins from gateway/plugins/, shipped in ConfigMap apisix-custom-plugins
-  # (created by scripts/up.sh). ai-injection-guard joins in P3.
+  # Custom Lua plugins from gateway/plugins/, one ConfigMap each (apisix-plugin-<name>,
+  # created by scripts/up.sh; the chart names a volume per ConfigMap).
   customPlugins:
     enabled: true
     luaPath: "/opts/custom_plugins/?.lua"
@@ -85,10 +85,17 @@ apisix:
       - name: agent-kill-switch
         attrs: {}
         configMap:
-          name: apisix-custom-plugins
+          name: apisix-plugin-agent-kill-switch
           mounts:
             - key: agent-kill-switch.lua
               path: /opts/custom_plugins/apisix/plugins/agent-kill-switch.lua
+      - name: ai-injection-guard
+        attrs: {}
+        configMap:
+          name: apisix-plugin-ai-injection-guard
+          mounts:
+            - key: ai-injection-guard.lua
+              path: /opts/custom_plugins/apisix/plugins/ai-injection-guard.lua
 
   pluginAttrs:
     # On 3.19 the collector, resource and batching come from plugin metadata

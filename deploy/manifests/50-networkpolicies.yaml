@@ -1,0 +1,158 @@
+# NetworkPolicies (GW-07, NFR-08, 7.3). Default deny in gateway and ai, then one allow per
+# flow (F1-F7). Enforced by k3s's built-in kube-router controller.
+# ${OLLAMA_EGRESS} is substituted by scripts/up.sh: the host Ollama IP block (D-002, D-009),
+# or an unmatchable address when there is none.
+# --------------------------------------------------------------------------- gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: gateway}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: apisix, namespace: gateway}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: apisix}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Data plane: host NodePort (F1), agents in ai calling back through the gateway (F2-F4)
+    - ports: [{port: 9080, protocol: TCP}]
+    # Prometheus scrape
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}]
+      ports: [{port: 9091, protocol: TCP}]
+    # Admin API: only the killswitch at runtime (GW-07). Bootstrap uses a deliberate
+    # port-forward, which arrives on the pod's loopback and is not subject to policy (D-017).
+    - from: [{podSelector: {matchLabels: {app: killswitch}}}]
+      ports: [{port: 9180, protocol: TCP}]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to: [{podSelector: {matchLabels: {app: etcd}}}]
+      ports: [{port: 2379, protocol: TCP}]
+    # Upstreams: guard, mock-llm, agents
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ai}}}]
+      ports: [{port: 8000, protocol: TCP}]
+    # Telemetry: OTLP spans, Loki access logs
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}]
+      ports: [{port: 4318, protocol: TCP}, {port: 3100, protocol: TCP}]
+    # Live mode: the host's Ollama, and nothing else outside the cluster (D-002)
+    - to: [{ipBlock: {cidr: "${OLLAMA_EGRESS}"}}]
+      ports: [{port: 11434, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: etcd, namespace: gateway}
+spec:
+  podSelector:
+    matchLabels: {app: etcd}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
+      ports: [{port: 2379, protocol: TCP}]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+# --------------------------------------------------------------------------- ai
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: ai}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: common, namespace: ai}
+spec:
+  # Every ai pod: scraped by Prometheus, may resolve names and export telemetry. No other
+  # egress leaves the namespace: no internet, no host (NFR-08).
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}]
+      ports: [{port: 8000, protocol: TCP}]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}, podSelector: {matchLabels: {app.kubernetes.io/name: opentelemetry-collector}}}]
+      ports: [{port: 4318, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: from-gateway, namespace: ai}
+spec:
+  # Only APISIX reaches the guard, mock-llm and the agents. This is what lets the guard
+  # trust X-Agent-Id (7.3).
+  podSelector:
+    matchExpressions: [{key: app, operator: In, values: [guard, mock-llm, researcher, executor]}]
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
+      ports: [{port: 8000, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: mcp-servers, namespace: ai}
+spec:
+  # MCP servers are reached only through the guard's inspecting proxy (F3)
+  podSelector:
+    matchExpressions: [{key: app, operator: In, values: [mcp-docs, mcp-actions]}]
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: guard}}}]
+      ports: [{port: 8000, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: guard-egress, namespace: ai}
+spec:
+  podSelector:
+    matchLabels: {app: guard}
+  policyTypes: [Egress]
+  egress:
+    - to: [{podSelector: {matchExpressions: [{key: app, operator: In, values: [mcp-docs, mcp-actions]}]}}]
+      ports: [{port: 8000, protocol: TCP}]
+    # Auto-trip (F5)
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app: killswitch}}}]
+      ports: [{port: 8000, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: agents-egress, namespace: ai}
+spec:
+  # Agents talk to everything through the gateway only: LLM, tools, each other (3)
+  podSelector:
+    matchExpressions: [{key: app, operator: In, values: [researcher, executor]}]
+  policyTypes: [Egress]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
+      ports: [{port: 9080, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: killswitch, namespace: gateway}
+spec:
+  # The killswitch (P5): the only runtime client of the Admin API (GW-07); sends the
+  # verification probe through the data plane (KS-04); exports telemetry.
+  podSelector:
+    matchLabels: {app: killswitch}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Guard auto-trip (F5), Alertmanager webhook (F6), Prometheus scrape
+    - from:
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ai}}, podSelector: {matchLabels: {app: guard}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}
+      ports: [{port: 8000, protocol: TCP}]
+    # Control panel through the host NodePort (KS-08)
+    - ports: [{port: 8000, protocol: TCP}]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}, podSelector: {matchLabels: {k8s-app: kube-dns}}}]
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
+      ports: [{port: 9180, protocol: TCP}, {port: 9080, protocol: TCP}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}]
+      ports: [{port: 4318, protocol: TCP}]

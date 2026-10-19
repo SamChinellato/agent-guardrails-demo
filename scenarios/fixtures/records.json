@@ -1,0 +1,18 @@
+{
+  "suppliers": {
+    "supplier-01": {"name": "Northwind Packaging Ltd", "status": "active", "notes": ""},
+    "supplier-02": {"name": "Blue Ridge Components", "status": "under review", "notes": ""},
+    "supplier-03": {"name": "Harbor Freight Logistics", "status": "active", "notes": ""},
+    "supplier-04": {"name": "Greenleaf Office Supplies", "status": "active", "notes": ""},
+    "supplier-05": {"name": "Summit Industrial Coatings", "status": "active", "notes": ""},
+    "supplier-07": {"name": "Meridian Data Services", "status": "active", "notes": ""}
+  },
+  "customers": [
+    {"id": "C-1001", "name": "Avery Quinlan", "email": "avery.quinlan@customers.demo.local", "phone": "+1-555-0101", "tier": "gold"},
+    {"id": "C-1002", "name": "Jordan Ellery", "email": "jordan.ellery@customers.demo.local", "phone": "+1-555-0102", "tier": "silver"},
+    {"id": "C-1003", "name": "Morgan Pryce", "email": "morgan.pryce@customers.demo.local", "phone": "+1-555-0103", "tier": "bronze"},
+    {"id": "C-1004", "name": "Riley Tamsin", "email": "riley.tamsin@customers.demo.local", "phone": "+1-555-0104", "tier": "gold"},
+    {"id": "C-1005", "name": "Casey Wynford", "email": "casey.wynford@customers.demo.local", "phone": "+1-555-0105", "tier": "silver"},
+    {"id": "C-1006", "name": "Sam Okonedo", "email": "sam.okonedo@customers.demo.local", "phone": "+1-555-0106", "tier": "bronze"}
+  ]
+}

@@ -243,3 +243,77 @@ Guard blocks and kill-switch events appear as annotations on every dashboard.
 At the operator's request, APISIX's built-in admin UI (`enable_admin_ui: true`, served at `/ui/` on the Admin API port) is available, without breaking rule 6. `make admin-ui` opens a deliberate `kubectl port-forward` on `127.0.0.1:9180` and points to the **viewer** key in `.secrets/`, which can read every object but can't change any (verified: a viewer PUT is refused). The admin key is there too for deliberate edits, which the next `bootstrap-gateway.sh` reports as drift. The UI isn't reachable from the LAN or from the k3d port mappings (verified). To use it from another machine, SSH-tunnel port 9180.
 
 Machine-local settings, such as `HOST_PORT_GRAFANA=3001` on this host, live in a gitignored `.env.local`. `scripts/lib.sh` and the test suite both read it, and values already in the environment take precedence.
+
+## D-026 The classifier scores each paragraph and HTML comment separately (P3)
+
+**Finding.** Scored as one block, the poisoned `supplier-07.md` gets an injection probability of **0.004**: its hidden instructions are diluted by the benign text around them. Its HTML comment alone scores 0.99.
+
+**Chosen.** `guard/classifier.py` splits text into visible paragraphs plus the content of every HTML comment, scores each one (with overlapping 512-token windows for long segments), and takes the maximum. The poisoned document now scores 1.000. A regex heuristic list (`guard/signals.py`) is the second signal (GRD-01). Its score is used when it is higher than the model's, and the matching rule is recorded as `rule_id`.
+
+**Measured on the fixtures,** on CPU at about 20–30 ms per prompt:
+
+| Fixture set | Classifier score |
+| --- | --- |
+| 5 crude attacks | 1.000 (blocked first by `ai-prompt-guard`) |
+| 5 subtle attacks | 1.000 |
+| 10 benign prompts | 0.000 |
+| 5 benign documents | ≤ 0.005, except one `supplier-03` paragraph at **0.638** |
+
+The `supplier-03` paragraph is "confirm the new rate card is applied… No other action needed". It sits below the 0.85 threshold. The model and text are fixed, so the score is deterministic, and the margin is recorded here as the closest false positive. The classifier's three files (`model.onnx`, `tokenizer.json`, `config.json`) are downloaded at build time and verified against SHA-256 values in `versions.env`, so the guard makes no network calls at runtime.
+
+## D-027 Decisions are pluggable: the `Decider` protocol (P3)
+
+The operator plans to add an external decisioning model later. The guard separates *judging* from *enforcing*:
+
+- A **`Decider`** answers "is this a violation, with what score, which rule, and why" (`guard/engine.py`). `LocalDecider` uses the classifier, the heuristics and the policy's tool rules.
+- The **`Engine`** applies the check's mode (enforce → block, monitor → flag, off → skip). It writes the decision record (log line, span event, `guard_decisions_total`; GRD-05) and calls auto-trip for critical blocks (GRD-06).
+
+An external model can implement `Decider` and run in front of, alongside, or instead of the local one. Decision IDs, records, modes, auto-trip and evidence don't change. The policy file is the natural place to choose a decider per check, once the external model's interface is known.
+
+## D-028 Policy hot reload: kubelet `sync-frequency=5s` (P3)
+
+The guard watches its mounted policy file and reloads within about 1 s of the file changing. Kubelet, though, refreshes mounted ConfigMaps only on its sync period, about 1 minute by default, which would break the 10 s bound (GRD-02). The cluster is created with `--kubelet-arg=sync-frequency=5s` (`k3d/cluster.yaml`). The ConfigMap is mounted as a directory, not `subPath`, so updates propagate.
+
+- **Measured:** `make policy-set` to the new behaviour at the gateway took 4.2 s (`test_policy_hot_reload_within_10s_and_monitor_mode_flags`).
+- **Bad files are rejected.** A policy that fails to parse is refused, and the previous policy stays active.
+- **Live policy survives `make up`.** `make up` doesn't overwrite a `make policy-set` change; it seeds `guard-policy` only when missing. `make reset` (P5) restores `policy/policy.yaml`.
+
+## D-029 Rootless Podman: kube-router needs a larger `net.core.wmem_default` (P3)
+
+**Finding.** After the P3 NetworkPolicies went in, pods created afterwards were not covered:
+- a fresh pod in `ai` reached the internet and the Admin API
+- APISIX couldn't reach etcd until the policies were re-applied
+
+The k3s log showed `iptables-restore: line 370 failed: Message too large` on every sync. kube-router applies its whole ruleset in one iptables-nft batch, and once the batch passed about 200 KB, every sync aborted.
+
+**Cause.** iptables-nft tries `SO_SNDBUFFORCE` to fit the batch. A user namespace may not do that, so the call fails and iptables silently keeps the **default** send buffer (`net.core.wmem_default`, 212,992 bytes). Raising `net.core.wmem_max` alone didn't help, as tested. The node could replay the 359-line ruleset by hand but not kube-router's larger batch.
+
+**Fix.** A one-time host setting, `net.core.wmem_default = 2097152`, in `/etc/sysctl.d/91-ai-gateway-demo-wmem-default.conf`.
+- After it, the sync logged no errors, and all NetworkPolicy tests passed, including on a clean rebuild.
+- `make prereqs` checks the setting on rootless runtimes and prints the fix.
+- `make up` now runs `scripts/verify-netpol.sh`, which starts a fresh pod in `ai` and fails the install unless that pod is cut off from the internet within 20 s. A silently failing policy controller can't go unnoticed again.
+
+The policies themselves were never wrong: on a successful sync they enforce as written.
+
+## D-030 MCP SDK v2 specifics (P3)
+
+- **Renamed API.** The pinned `mcp` 2.3.0 renamed `FastMCP` to `MCPServer` (`mcp.server.mcpserver`).
+- **Transport.** The servers use `streamable_http_app(json_response=True, stateless_http=True)`, mounted under the shared FastAPI app so `/healthz`, `/readyz` and `/metrics` still work. The SDK's session manager runs in the app lifespan.
+- **DNS-rebinding protection stays on.** It's limited to each server's in-cluster names (`MCP_ALLOWED_HOSTS`). A foreign `Host` gets 421, verified.
+- **Trace context.** Stateless mode runs tools in the session manager's task group, outside the request's trace context. So `tool_span()` re-parents each tool span on the request's `traceparent` explicitly.
+- **Internal outbox endpoints.** `mcp-actions` exposes `GET/DELETE /outbox` and `GET /records`. They're used by tests and `make reset`, and APISIX doesn't route them. The MCP servers themselves enforce nothing: every control is in the gateway's guard, which is the point the demo makes.
+
+## D-031 Gateway wiring for the guard (P3)
+
+- **`ai-injection-guard`** (`gateway/plugins/ai-injection-guard.lua`) runs at priority 1060, between `ai-prompt-guard` (1072) and `ai-proxy` (1040).
+  - It forwards the gateway span's `$opentelemetry_context_traceparent`, so guard spans are children of the APISIX span (OBS-02, verified in Tempo).
+  - It fails closed with 503, unless `fail_open` is set.
+  - For agent `/task` bodies it inspects `instruction` as a user message. That's what DEMO-02 needs on the agent route (P4, stage `agent_ingress`, check `agent.user_prompt_injection`).
+- **One ConfigMap per custom plugin** (`apisix-plugin-<name>`), because the chart names one volume per ConfigMap.
+- **MCP routes** `/mcp/docs` and `/mcp/actions` proxy to the `guard` upstream object, with the same identity plugins as the LLM route (GW-05).
+- **The `probe` consumer has an empty tool list.** It only needs to reach the routes for kill verification (KS-04).
+- **NetworkPolicies** (`deploy/manifests/50-networkpolicies.yaml`) default-deny ingress and egress in `gateway` and `ai`, with one allow per flow.
+  - Only APISIX reaches the guard, mock-llm and the agents, which is why the guard can trust `X-Agent-Id`.
+  - Only the guard reaches the MCP servers.
+  - Agents reach only APISIX.
+  - Only the `killswitch` label reaches the Admin API, and APISIX egress outside the cluster is limited to the host Ollama.

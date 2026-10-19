@@ -43,10 +43,10 @@ def setup_telemetry(service: str) -> None:
     HTTPXClientInstrumentor().instrument()
 
 
-def create_app(service: str, ready_check: ReadyCheck | None = None) -> FastAPI:
+def create_app(service: str, ready_check: ReadyCheck | None = None, lifespan=None) -> FastAPI:
     setup_logging(service, os.environ.get("LOG_LEVEL", "INFO"))
     setup_telemetry(service)
-    app = FastAPI(title=service, docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title=service, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict:

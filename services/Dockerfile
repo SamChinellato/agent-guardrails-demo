@@ -5,6 +5,17 @@ ARG UV_IMAGE
 
 FROM ${UV_IMAGE} AS uv
 
+# Classifier files for the guard (GRD-01), downloaded at build time and verified by
+# SHA-256 so the guard makes no network calls at runtime. Empty for other services.
+FROM ${PYTHON_BASE} AS model
+ARG CLASSIFIER_MODEL=""
+ARG CLASSIFIER_REVISION=""
+ARG CLASSIFIER_ONNX_SHA256=""
+ARG CLASSIFIER_TOKENIZER_SHA256=""
+ARG CLASSIFIER_CONFIG_SHA256=""
+COPY guard/fetch_model.py /tmp/fetch_model.py
+RUN python /tmp/fetch_model.py
+
 FROM ${PYTHON_BASE} AS build
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
@@ -21,6 +32,7 @@ FROM ${PYTHON_BASE}
 ARG SERVICE
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 COPY --from=build /app/.venv /app/.venv
+COPY --from=model /models /models
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     SERVICE=${SERVICE}

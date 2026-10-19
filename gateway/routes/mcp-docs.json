@@ -1,0 +1,34 @@
+{
+  "id": "mcp-docs",
+  "name": "mcp-docs",
+  "desc": "Supplier documents MCP server, through the guard (F3, GW-05)",
+  "uri": "/mcp/docs",
+  "methods": [
+    "POST",
+    "GET",
+    "DELETE"
+  ],
+  "plugin_config_id": "pc-mcp",
+  "upstream_id": "guard",
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "researcher",
+        "probe"
+      ],
+      "rejected_code": 403,
+      "rejected_msg": "consumer not allowed on this route"
+    },
+    "proxy-rewrite": {
+      "headers": {
+        "set": {
+          "X-Agent-Id": "$consumer_name"
+        }
+      }
+    }
+  }
+}

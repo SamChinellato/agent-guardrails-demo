@@ -50,6 +50,21 @@ else
   fi
 fi
 
+# Rootless only: kube-router applies NetworkPolicy rules in one iptables-nft batch. iptables
+# tries SO_SNDBUFFORCE to fit the batch, which a user namespace may not do, and then keeps
+# the default send buffer (net.core.wmem_default, ~208 KiB). Past that the sync fails with
+# "Message too large" and new pods go unprotected (D-029).
+if [[ "${RUNTIME_ROOTLESS:-false}" == true && -r /proc/sys/net/core/wmem_default ]]; then
+  wdef="$(cat /proc/sys/net/core/wmem_default)"
+  if (( wdef >= 2097152 )); then
+    ok "net.core.wmem_default ${wdef} (NetworkPolicy sync fits)"
+  else
+    fail "net.core.wmem_default is ${wdef}; rootless NetworkPolicy sync needs >= 2097152. Fix once with:
+         printf 'net.core.wmem_default = 2097152\\n' | sudo tee /etc/sysctl.d/91-ai-gateway-demo-wmem-default.conf
+         sudo sysctl --system"
+  fi
+fi
+
 check_tool k3d     "$K3D_MIN_VERSION"     "k3d version"                    "Run: make tools"
 check_tool kubectl "$KUBECTL_MIN_VERSION" "kubectl version --client"       "Run: make tools"
 check_tool helm    "$HELM_MIN_VERSION"    "helm version --short"           "Run: make tools"

@@ -71,6 +71,11 @@
       "match_all_roles": false,
       "match_all_conversation_history": false
     },
+    "ai-injection-guard": {
+      "stage": "llm",
+      "timeout_ms": 3000,
+      "fail_open": false
+    },
     "ai-proxy": "${LLM_PROVIDER}"
   }
 }

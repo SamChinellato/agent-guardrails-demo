@@ -65,8 +65,8 @@ trip: ## Manual kill: make trip SCOPE=global REASON="drill" (P5)
 kill-reset: ## Reset a kill: make kill-reset SCOPE=global REASON="..." (P5)
 	$(call not_yet,P5)
 
-policy-set: ## Change a guard check mode: make policy-set CHECK=... MODE=... (P3)
-	$(call not_yet,P3)
+policy-set: ## Change a guard check mode: make policy-set CHECK=... MODE=enforce|monitor|off
+	@scripts/policy-set.sh "$(CHECK)" "$(MODE)"
 
 evidence: ## Build an evidence bundle: make evidence INCIDENT=...|TRACE=... (P6)
 	$(call not_yet,P6)

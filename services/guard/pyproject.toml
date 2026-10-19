@@ -1,0 +1,25 @@
+[project]
+name = "guard"
+version = "0.1.0"
+description = "Prompt-injection classifier, policy engine and MCP inspecting proxy (7.3)"
+requires-python = "==3.12.*"
+dependencies = [
+  "demo-common",
+  "onnxruntime>=1.20,<2",
+  "tokenizers>=0.20,<1",
+  "numpy>=2,<3",
+  "pyyaml>=6.0,<7",
+]
+
+[project.scripts]
+guard = "guard.app:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/guard"]
+
+[tool.uv.sources]
+demo-common = { workspace = true }

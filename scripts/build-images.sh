@@ -29,7 +29,14 @@ for svc in $members; do
     continue
   fi
   log "building $svc:$tag"
-  runtime_cli build -q -f "$SERVICES_DIR/Dockerfile" \
+  extra=()
+  if [[ "$svc" == guard ]]; then
+    extra=(--build-arg "CLASSIFIER_MODEL=$CLASSIFIER_MODEL" --build-arg "CLASSIFIER_REVISION=$CLASSIFIER_REVISION"
+           --build-arg "CLASSIFIER_ONNX_SHA256=$CLASSIFIER_ONNX_SHA256"
+           --build-arg "CLASSIFIER_TOKENIZER_SHA256=$CLASSIFIER_TOKENIZER_SHA256"
+           --build-arg "CLASSIFIER_CONFIG_SHA256=$CLASSIFIER_CONFIG_SHA256")
+  fi
+  runtime_cli build -q -f "$SERVICES_DIR/Dockerfile" "${extra[@]}" \
     --build-arg "PYTHON_BASE=$(pinned_ref PYTHON_BASE)" \
     --build-arg "UV_IMAGE=$(pinned_ref UV)" \
     --build-arg "SERVICE=$svc" \
