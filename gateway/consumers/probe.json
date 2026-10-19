@@ -1,0 +1,9 @@
+{
+  "username": "probe",
+  "desc": "Synthetic probe used by the killswitch to verify kills (KS-04)",
+  "plugins": {
+    "key-auth": {
+      "key": "${CONSUMER_KEY_PROBE}"
+    }
+  }
+}

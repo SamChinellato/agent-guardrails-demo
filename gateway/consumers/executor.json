@@ -1,0 +1,9 @@
+{
+  "username": "executor",
+  "desc": "Executor agent",
+  "plugins": {
+    "key-auth": {
+      "key": "${CONSUMER_KEY_EXECUTOR}"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "username": "researcher",
+  "desc": "Researcher agent",
+  "plugins": {
+    "key-auth": {
+      "key": "${CONSUMER_KEY_RESEARCHER}"
+    }
+  }
+}

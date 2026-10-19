@@ -1,0 +1,80 @@
+# Standalone single-node etcd for APISIX config (7.2): official image, not the chart's
+# Bitnami subchart. ${ETCD_REF} is substituted by scripts/up.sh with the pinned image@digest.
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd
+  namespace: gateway
+  labels: {app: etcd}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: etcd}
+  ports:
+    - {name: client, port: 2379}
+    - {name: peer, port: 2380}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: gateway
+  labels: {app: etcd}
+spec:
+  serviceName: etcd
+  replicas: 1
+  selector:
+    matchLabels: {app: etcd}
+  template:
+    metadata:
+      labels: {app: etcd}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: etcd
+          image: ${ETCD_REF}
+          command:
+            - etcd
+            - --name=etcd-0
+            - --data-dir=/var/lib/etcd/data
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://etcd-0.etcd.gateway.svc.cluster.local:2379
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-advertise-peer-urls=http://etcd-0.etcd.gateway.svc.cluster.local:2380
+            - --initial-cluster=etcd-0=http://etcd-0.etcd.gateway.svc.cluster.local:2380
+            - --initial-cluster-state=new
+            - --listen-metrics-urls=http://0.0.0.0:2381
+            - --auto-compaction-retention=1h
+            - --quota-backend-bytes=536870912
+          ports:
+            - {name: client, containerPort: 2379}
+            - {name: peer, containerPort: 2380}
+            - {name: metrics, containerPort: 2381}
+          readinessProbe:
+            httpGet: {path: /readyz, port: 2381}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /livez, port: 2381}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/etcd}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 1Gi}

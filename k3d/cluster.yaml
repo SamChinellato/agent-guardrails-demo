@@ -1,0 +1,34 @@
+# k3d cluster for the demo (7.1). Values in ${...} are expanded by k3d from the
+# environment that scripts/up.sh sets (versions.env plus scripts/lib.sh).
+# Runtime-specific flags (rootless Podman kubelet gate, host alias) are added by up.sh (D-009).
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: ai-gateway-demo
+servers: 1
+agents: 0
+image: ${K3S_IMAGE}@${K3S_DIGEST}
+ports:
+  - port: 127.0.0.1:${HOST_PORT_GATEWAY}:30080   # APISIX gateway
+    nodeFilters: [loadbalancer]
+  - port: 127.0.0.1:${HOST_PORT_GRAFANA}:30300   # Grafana
+    nodeFilters: [loadbalancer]
+  - port: 127.0.0.1:${HOST_PORT_PANEL}:30090     # killswitch control panel
+    nodeFilters: [loadbalancer]
+registries:
+  # Created beforehand by up.sh (k3d's inline registry creation fails on Podman, D-009)
+  use:
+    - k3d-registry.localhost:5000
+options:
+  k3d:
+    wait: true
+    timeout: 300s
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters: [server:*]
+      - arg: --disable=servicelb
+        nodeFilters: [server:*]
+  kubeconfig:
+    updateDefaultKubeconfig: false
+    switchCurrentContext: false

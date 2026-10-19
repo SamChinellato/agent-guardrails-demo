@@ -15,6 +15,7 @@ INCIDENT ?=
 TRACE    ?=
 DIR      ?=
 SVC      ?=
+PYTEST_ARGS ?=
 
 export LLM_MODE HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL CONTAINER_RUNTIME
 
@@ -37,14 +38,14 @@ prereqs: ## Check runtime (Docker/Podman), tools, memory, disk, ports, (live) ho
 pin-check: ## Fail if upstream image digests drifted from versions.env
 	@scripts/pin-digests.sh --check
 
-prefetch: ## Pull every pinned image and model (P1)
-	$(call not_yet,P1)
+prefetch: ## Pull every pinned chart, image and (LLM_MODE=live) the host Ollama model
+	@scripts/prefetch.sh
 
-up: ## Create cluster, build images, install charts, bootstrap gateway (P1)
-	$(call not_yet,P1)
+up: ## Create cluster, build images, install charts, bootstrap gateway
+	@scripts/up.sh
 
-down: ## Delete the cluster, keep the prefetch cache (P1)
-	$(call not_yet,P1)
+down: ## Delete the cluster and registry; keep the prefetch cache and secrets
+	@scripts/down.sh
 
 reset: ## Return to a clean demo state without rebuilding (P5)
 	$(call not_yet,P5)
@@ -73,11 +74,11 @@ evidence: ## Build an evidence bundle: make evidence INCIDENT=...|TRACE=... (P6)
 evidence-verify: ## Verify bundle hashes and hash chain: make evidence-verify DIR=... (P6)
 	$(call not_yet,P6)
 
-test: ## Run the acceptance suite in mock mode (P7)
-	$(call not_yet,P7)
+test: ## Run the acceptance suite in mock mode
+	@cd tests && uv run --frozen pytest $(PYTEST_ARGS)
 
 clean-room: ## Double clean rebuild proof (P7)
 	$(call not_yet,P7)
 
-logs: ## Tail one service's logs: make logs SVC=guard (P1)
-	$(call not_yet,P1)
+logs: ## Tail one service's logs: make logs SVC=apisix|etcd|mock-llm|...
+	@scripts/logs.sh "$(SVC)"

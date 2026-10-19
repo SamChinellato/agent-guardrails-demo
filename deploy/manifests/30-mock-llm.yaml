@@ -1,0 +1,56 @@
+# Scripted OpenAI-compatible LLM (7.5). ${MOCK_LLM_IMAGE} is substituted by scripts/up.sh.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-llm
+  namespace: ai
+  labels: {app: mock-llm}
+spec:
+  selector: {app: mock-llm}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-llm
+  namespace: ai
+  labels: {app: mock-llm}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mock-llm}
+  template:
+    metadata:
+      labels: {app: mock-llm}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mock-llm
+          image: ${MOCK_LLM_IMAGE}
+          env:
+            - {name: SCRIPTS_DIR, value: /scripts}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+      volumes:
+        - name: scripts
+          configMap: {name: mock-llm-scripts}

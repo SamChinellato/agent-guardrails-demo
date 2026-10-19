@@ -1,0 +1,9 @@
+{
+  "username": "demo-user",
+  "desc": "Human operator starting tasks (F1)",
+  "plugins": {
+    "key-auth": {
+      "key": "${CONSUMER_KEY_DEMO_USER}"
+    }
+  }
+}

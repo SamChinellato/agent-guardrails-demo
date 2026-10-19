@@ -1,0 +1,8 @@
+# Used by scripts/smoke.sh and the P1 gateway checks: one fixed reply per consumer.
+agents:
+  researcher:
+    - final: "smoke-ok researcher"
+  executor:
+    - final: "smoke-ok executor"
+  probe:
+    - final: "smoke-ok probe"

@@ -2,7 +2,7 @@
 
 Apache APISIX as an AI gateway between two cooperating agents and their LLM and MCP tools, on a local k3d cluster. It shows four things: prompt-injection attacks, observability, a kill switch, and a tamper-evident evidence bundle. The full design is in [`SPEC.md`](SPEC.md). Decisions and deviations are in [`docs/DECISIONS.md`](docs/DECISIONS.md), and progress is in [`docs/REQUIREMENTS_STATUS.md`](docs/REQUIREMENTS_STATUS.md).
 
-> **Status: phase P0 (scaffold and pin).** Only `make tools`, `make prereqs` and `make pin-check` work so far. Other targets exit with the phase that implements them.
+> **Status: P1 done** (cluster and gateway core). `make tools`, `prereqs`, `prefetch`, `up`, `down`, `test`, `logs` and `pin-check` work. Other targets exit and name the phase that implements them.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ make prereqs                 # mock mode checks
 make prereqs LLM_MODE=live   # also checks the host Ollama and pinned model
 ```
 
-## Quick start (from P1 onward)
+## Quick start
 
 ```bash
 make prefetch

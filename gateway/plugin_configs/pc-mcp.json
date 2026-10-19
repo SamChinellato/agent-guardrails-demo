@@ -1,0 +1,30 @@
+{
+  "id": "pc-mcp",
+  "desc": "Kill-switch hook and telemetry for the MCP routes (GW-03)",
+  "plugins": {
+    "fault-injection": {
+      "_meta": {
+        "disable": true
+      },
+      "abort": {
+        "http_status": 503,
+        "body": "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32003,\"message\":\"kill_switch_engaged: tool access suspended by incident response\"}}",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    "opentelemetry": {
+      "sampler": {
+        "name": "always_on"
+      },
+      "additional_attributes": [
+        "consumer_name",
+        "route_id"
+      ]
+    },
+    "prometheus": {
+      "prefer_name": true
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "pc-llm",
+  "desc": "Kill-switch hook and telemetry for the LLM route (GW-03)",
+  "plugins": {
+    "fault-injection": {
+      "_meta": {
+        "disable": true
+      },
+      "abort": {
+        "http_status": 503,
+        "body": "{\"error\":{\"type\":\"kill_switch_engaged\",\"message\":\"AI access suspended by incident response\"}}",
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
+    },
+    "opentelemetry": {
+      "sampler": {
+        "name": "always_on"
+      },
+      "additional_attributes": [
+        "consumer_name",
+        "route_id"
+      ]
+    },
+    "prometheus": {
+      "prefer_name": true
+    }
+  }
+}

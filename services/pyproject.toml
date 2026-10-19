@@ -1,0 +1,20 @@
+# uv workspace for all demo services. One lock file with hashes (REP-02).
+[project]
+name = "ai-gateway-demo-services"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = []
+
+[tool.uv]
+# Resolve only releases published before the P0 cut-off (DECISIONS D-003), so
+# re-locking is reproducible and new uploads never sneak in.
+exclude-newer = "2026-10-05T00:00:00Z"
+
+[dependency-groups]
+dev = ["pytest>=9,<10"]
+
+[tool.uv.workspace]
+members = ["common", "mock-llm"]
+
+[tool.uv.sources]
+demo-common = { workspace = true }

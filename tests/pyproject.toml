@@ -1,0 +1,14 @@
+# Host-side acceptance suite (tests/acceptance). Run with `make test`.
+[project]
+name = "acceptance-tests"
+version = "0.1.0"
+requires-python = "==3.12.*"
+dependencies = ["pytest>=9,<10", "httpx>=0.28,<0.29", "pyyaml>=6.0,<7"]
+
+[tool.uv]
+package = false
+exclude-newer = "2026-10-05T00:00:00Z"
+
+[tool.pytest.ini_options]
+testpaths = ["acceptance"]
+addopts = "-ra"

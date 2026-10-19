@@ -108,3 +108,54 @@ Pushing images from the host goes to `127.0.0.1:5000`, because `*.localhost` res
 ## D-011 Host ports are overridable (P0)
 
 The spec fixes ports 8080 (gateway), 3000 (Grafana) and 8090 (control panel). On this host, port 3000 is already used by another pod. Those remain the defaults, and `HOST_PORT_GATEWAY`, `HOST_PORT_GRAFANA` and `HOST_PORT_PANEL` override them. `prereqs.sh` checks the ports and names the container holding one. The NodePorts inside the cluster (30080, 30300, 30090) don't change.
+
+## D-012 Image tags for uncommitted work (P1)
+
+Built images are tagged `<service>:<git-short-sha>` (REP-03). All services share one tag, because they share `demo-common` and one `uv.lock`. When `services/` has uncommitted changes, the tag gets a content-hash suffix (`<sha>-<hash8>`). A rebuild of work in progress then never reuses a stale image under a tag that already exists. On a clean checkout the tag is exactly the short SHA. `build-images.sh` skips the build when the registry already holds the tag.
+
+## D-013 Per-agent kill uses a custom `agent-kill-switch` plugin on the consumer (P1)
+
+**Finding.** The spec (KS-01, 7.2) asks the killswitch to add a `fault-injection` abort to the consumer. On APISIX 3.19 that never fires on our routes. Tested on the running gateway, three rounds each:
+
+| Consumer `fault-injection` | Route has `fault-injection`? | Result |
+| --- | --- | --- |
+| added | no (scratch route) | 503, every time |
+| added | yes (disabled, from `pc-llm`, as GW-03 requires) | 200, never fires |
+
+When APISIX merges consumer plugins into a route, it only re-runs the rewrite phase for plugins the route doesn't already have. `fault-injection` aborts in the rewrite phase, at priority 11000, before `key-auth` has found the consumer. So the consumer's copy is merged but never executed. GW-03 (pre-staged `fault-injection` in every plugin config) and a consumer-scoped `fault-injection` cancel each other out.
+
+**Fallback considered.** The spec's fallback is to swap the consumer's key for a revoked value. That answers 401 `Invalid API key`, which breaks KS-06: agents must get a 503 `kill_switch_engaged` and halt cleanly, and a 401 looks like a misconfiguration.
+
+**Chosen.** A 70-line custom plugin, `gateway/plugins/agent-kill-switch.lua`, loaded through the same custom-plugins mechanism as GW-09. The killswitch adds `{"agent-kill-switch": {"incident_id": …}}` to the consumer and removes it on reset. No route uses that plugin name, so APISIX runs it after authentication, in the access phase at priority 2390. That's after `consumer-restriction` (2400) and before every AI plugin and the upstream. It answers 503 with the same body shape as the global kill for that route type: a JSON-RPC error on `pc-mcp` routes, an OpenAI-style `kill_switch_engaged` error elsewhere. It also includes the `incident_id`.
+
+**Verified.** The executor was cut off within 14–24 ms over three rounds, the researcher was unaffected, and reset took about 20 ms. Covered by `test_agent_scoped_kill_affects_only_that_agent`. KS-01 is marked `DEVIATION` (method only; the behaviour is as specified).
+
+## D-014 Consumers can't be PATCHed; the killswitch uses GET + PUT for them (P1)
+
+`PATCH /apisix/admin/consumers/<name>` returns 405 on 3.19. Section 7.4 says Admin API changes use PATCH. That still holds for plugin configs, where `PATCH` with `{"plugins":{"fault-injection":{"_meta":{"disable":false}}}}` works. For consumers, the killswitch will GET the consumer, change its `plugins`, PUT the whole object back, and GET it again to verify. The read-back verification (KS-04) is unchanged.
+
+## D-015 APISIX 3.19 plugin facts, verified on the running gateway (P1)
+
+- **Plugins loaded.** All 12 configured plugins appear in `/apisix/admin/plugins/list`, including `ai-proxy-multi`.
+- **Priorities.** `opentelemetry` 12009, `fault-injection` 11000, `request-validation` 2800, `key-auth` 2500, `consumer-restriction` 2400, `ai-prompt-guard` 1072, `ai-proxy-multi` 1041, `ai-proxy` 1040, `proxy-rewrite` 1008, `prometheus` 500, `loki-logger` 414, `http-logger` 410.
+  - A global kill rejects before authentication, as 7.2 expects. Verified: an anonymous request gets 503 while `pc-llm` is tripped.
+  - `opentelemetry` runs before the kill, so killed requests still produce spans.
+- **`request-validation` priority.** It would run before `key-auth`, so an unauthenticated `stream: true` request would get 400 rather than 401. The route sets `_meta.priority: 2300` so authentication and consumer restriction come first. Its rejection body is plain text, from `rejected_msg`.
+- **`ai-proxy` config.** `provider: openai-compatible`, `override.endpoint` (full URL), `options` (merged into the body; `options.model` replaces the client's model), `timeout` in ms (120000), and `override.llm_options.max_tokens` to cap output in live mode. `auth` is required even though neither backend checks it, so it carries a dummy bearer token.
+- **`ai-proxy` forwards client headers to the backend.** `X-Demo-Scenario` reaches mock-llm, and so does the `X-Agent-Id` set by `proxy-rewrite` from `$consumer_name`. A client-supplied `X-Agent-Id` is overwritten. Covered by `test_agent_id_comes_from_consumer_not_client`.
+- **`ai-prompt-guard`** rejects with 400 `{"message":"Request contains prohibited content"}`. It checks only the latest message, and only the user role, by default (`match_all_roles` and `match_all_conversation_history` are false).
+- **Consumer `key-auth` keys** are stored encrypted in etcd but come back decrypted from the Admin API, so the bootstrap drift check can compare them directly.
+
+## D-016 Helm and bootstrap idempotence (P1)
+
+`helm upgrade` always creates a new revision, even when nothing changed. `helm_install` in `scripts/lib.sh` hashes the chart archive, the values file and the `--set` arguments, and stores the hash in a `demo-helm-state` ConfigMap. Releases whose hash hasn't changed are skipped. The custom plugins are mounted by `subPath`, which doesn't follow ConfigMap updates, so their checksum goes into a pod annotation. A change to plugin code changes the hash, and the pod rolls.
+
+`bootstrap-gateway.sh` PUTs only objects whose live value differs from `gateway/`, then reads back every object and fails on drift (GW-08). It keeps an engaged kill switch, both a plugin config's enabled `fault-injection` and a consumer's `agent-kill-switch` (D-013), so `make up` can't silently lift a kill. Measured: a second `make up` changes no object and finishes in 8 s; a cold `make up` takes 68 s on this host.
+
+## D-017 Gateway bootstrap runs from the host through a port-forward, not a Job (P1)
+
+GW-07 mentions a "bootstrap Job" among the Admin API's allowed clients. The bootstrap instead runs on the host, through a deliberate `kubectl port-forward`, as rule 6 allows. That reuses the same `.secrets/`, templates and drift check as the rest of the CLI. Port-forwarded traffic arrives on the pod's loopback, which `allow_admin` permits (`127.0.0.1/32`), and NetworkPolicy doesn't filter it. So the P3 NetworkPolicy will allow port 9180 from the killswitch pod only.
+
+## D-018 Live mode works end to end; qwen3 thinking is off (P1, updates D-006)
+
+With the gateway in live mode, a chat completion went researcher → APISIX `ai-proxy` → `host.containers.internal:11434` → host Ollama → `qwen3:4b`. It took 5.5 s with `/no_think` in the system prompt, against 31 s with thinking on (D-006). The agents (P4) will send `/no_think`. The route caps output at 1024 tokens.

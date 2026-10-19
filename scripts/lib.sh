@@ -75,6 +75,84 @@ llm_host_settings() {
   export OLLAMA_HOST_NAME OLLAMA_HOST_IP OLLAMA_URL
 }
 
+# pinned_ref NAME: "<image>@<digest>" for NAME_IMAGE / NAME_DIGEST in versions.env
+pinned_ref() {
+  local i="${1}_IMAGE" d="${1}_DIGEST"
+  [[ -n "${!i:-}" && -n "${!d:-}" ]] || die "versions.env has no pinned $1 image"
+  echo "${!i}@${!d}"
+}
+
+# git_tag SERVICE_DIR: image tag for a built service (REP-03). The git short SHA, plus a
+# content hash of the service sources when they differ from that commit, so a rebuild of
+# uncommitted work never reuses a stale tag (D-012).
+git_tag() {
+  local sha dirty
+  sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo nogit)"
+  dirty="$(git -C "$ROOT" status --porcelain -- "$@" 2>/dev/null)"
+  if [[ -n "$dirty" ]]; then
+    sha="$sha-$( (cd "$ROOT" && find "$@" -type f -not -path '*/.venv/*' -not -path '*/__pycache__/*' -print0 \
+      | sort -z | xargs -0 sha256sum) | sha256sum | cut -c1-8)"
+  fi
+  echo "$sha"
+}
+
+# wait_for DESCRIPTION TIMEOUT_SECONDS CMD...: poll CMD every second until it succeeds (rule 8)
+wait_for() {
+  local desc="$1" timeout="$2"; shift 2
+  local deadline=$(( SECONDS + timeout ))
+  until "$@" >/dev/null 2>&1; do
+    (( SECONDS < deadline )) || die "timed out after ${timeout}s waiting for $desc"
+    sleep 1
+  done
+}
+
+# chart_tgz NAME KEY: path to the pinned chart archive, downloading it into the prefetch
+# cache on first use. KEY selects KEY_CHART_REPO / KEY_CHART_VERSION from versions.env.
+chart_tgz() {
+  local name="$1" repo="${2}_CHART_REPO" ver="${2}_CHART_VERSION" dir="$ROOT/.prefetch/charts"
+  local tgz="$dir/$name-${!ver}.tgz"
+  if [[ ! -s "$tgz" ]]; then
+    mkdir -p "$dir"
+    helm pull "$name" --repo "${!repo}" --version "${!ver}" -d "$dir" >/dev/null
+  fi
+  echo "$tgz"
+}
+
+# helm_install RELEASE NAMESPACE CHART KEY VALUES_FILE [helm args...]
+# Installs the pinned chart; skips the upgrade when chart, values and args are unchanged
+# since the last successful install, so `make up` twice is a no-op (REP-07).
+helm_install() {
+  local release="$1" ns="$2" chart="$3" key="$4" values="$5"; shift 5
+  local tgz want have status
+  tgz="$(chart_tgz "$chart" "$key")"
+  want="$( { sha256sum "$tgz" "$values" | awk '{print $1}'; printf '%s\n' "$@"; } | sha256sum | cut -c1-16)"
+  have="$(kubectl -n "$ns" get configmap demo-helm-state -o jsonpath="{.data.$release}" 2>/dev/null || true)"
+  status="$(helm -n "$ns" status "$release" -o json 2>/dev/null | jq -r '.info.status' || true)"
+  if [[ "$want" == "$have" && "$status" == deployed ]]; then
+    log "helm release $release unchanged"
+    return 0
+  fi
+  log "helm upgrade --install $release ($chart ${tgz##*-})"
+  helm upgrade --install "$release" "$tgz" -n "$ns" -f "$values" "$@" --wait --timeout 10m >/dev/null
+  kubectl -n "$ns" get configmap demo-helm-state >/dev/null 2>&1 \
+    || kubectl -n "$ns" create configmap demo-helm-state >/dev/null
+  kubectl -n "$ns" patch configmap demo-helm-state --type merge -p "{\"data\":{\"$release\":\"$want\"}}" >/dev/null
+}
+
+# admin_port_forward: deliberate port-forward to the APISIX Admin API (rule 6, GW-07).
+# Sets ADMIN_URL and TMP (scratch dir); both are cleaned up when the script exits.
+admin_port_forward() {
+  TMP="$(mktemp -d)"
+  kubectl -n gateway port-forward svc/apisix-admin :9180 >"$TMP/pf.log" 2>&1 &
+  ADMIN_PF_PID=$!
+  trap 'kill "$ADMIN_PF_PID" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+  local port=""
+  wait_for "admin port-forward" 30 grep -q 'Forwarding from 127.0.0.1:' "$TMP/pf.log"
+  port="$(sed -n 's/^Forwarding from 127.0.0.1:\([0-9]*\).*/\1/p' "$TMP/pf.log" | head -1)"
+  ADMIN_URL="http://127.0.0.1:$port"
+  wait_for "admin API" 30 curl -s -o /dev/null "$ADMIN_URL/apisix/admin/routes"
+}
+
 # os_arch: e.g. LINUX_AMD64, DARWIN_ARM64 (for versions.env checksum keys)
 os_arch() {
   local os arch

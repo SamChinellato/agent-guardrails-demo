@@ -1,0 +1,20 @@
+{
+  "provider": "openai-compatible",
+  "auth": {
+    "header": {
+      "Authorization": "Bearer not-used"
+    }
+  },
+  "options": {
+    "model": "${OLLAMA_MODEL}",
+    "temperature": 0,
+    "seed": "${OLLAMA_SEED}"
+  },
+  "override": {
+    "endpoint": "${OLLAMA_URL}/v1/chat/completions",
+    "llm_options": {
+      "max_tokens": 1024
+    }
+  },
+  "timeout": 120000
+}
