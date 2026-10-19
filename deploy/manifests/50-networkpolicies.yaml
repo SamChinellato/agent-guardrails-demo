@@ -88,7 +88,7 @@ spec:
   # Only APISIX reaches the guard, mock-llm and the agents. This is what lets the guard
   # trust X-Agent-Id (7.3).
   podSelector:
-    matchExpressions: [{key: app, operator: In, values: [guard, mock-llm, researcher, executor]}]
+    matchExpressions: [{key: app, operator: In, values: [guard, mock-llm, researcher, executor, console]}]
   policyTypes: [Ingress]
   ingress:
     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
@@ -124,9 +124,9 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: agents-egress, namespace: ai}
 spec:
-  # Agents talk to everything through the gateway only: LLM, tools, each other (3)
+  # Agents (and the console) talk to everything through the gateway only (3)
   podSelector:
-    matchExpressions: [{key: app, operator: In, values: [researcher, executor]}]
+    matchExpressions: [{key: app, operator: In, values: [researcher, executor, console]}]
   policyTypes: [Egress]
   egress:
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]

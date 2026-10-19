@@ -45,7 +45,8 @@ render() { jq --argjson vars "$vars" "$RENDER" "$1"; }
 
 provider="$GW/upstreams/llm.$LLM_MODE.json"
 [[ -f "$provider" ]] || die "no LLM provider config $provider"
-vars="$(jq --argjson p "$(render "$provider")" '. + {LLM_PROVIDER: $p}' <<<"$vars")"
+vars="$(jq --argjson p "$(render "$provider")" --argjson m "$(render "$GW/upstreams/llm.mock.json")" \
+  '. + {LLM_PROVIDER: $p, LLM_PROVIDER_MOCK: $m}' <<<"$vars")"
 
 # ------------------------------------------------------------------ desired vs live
 # subset(d; l): every key/value in d is present and equal in l (arrays compared exactly)

@@ -82,11 +82,16 @@ source "$ROOT/.cache/image-tags.env"
 
 # ---------------------------------------------------------------- workloads
 log "ai services"
+llm_model="demo"; [[ "$LLM_MODE" == live ]] && llm_model="$OLLAMA_MODEL"
 render_manifest() {
   sed -e "s|\${MOCK_LLM_IMAGE}|$REGISTRY_PULL/mock-llm:$MOCK_LLM_TAG|g" \
       -e "s|\${GUARD_IMAGE}|$REGISTRY_PULL/guard:$GUARD_TAG|g" \
       -e "s|\${MCP_DOCS_IMAGE}|$REGISTRY_PULL/mcp-docs:$MCP_DOCS_TAG|g" \
-      -e "s|\${MCP_ACTIONS_IMAGE}|$REGISTRY_PULL/mcp-actions:$MCP_ACTIONS_TAG|g" "$1"
+      -e "s|\${MCP_ACTIONS_IMAGE}|$REGISTRY_PULL/mcp-actions:$MCP_ACTIONS_TAG|g" \
+      -e "s|\${AGENTS_IMAGE}|$REGISTRY_PULL/agents:$AGENTS_TAG|g" \
+      -e "s|\${CONSOLE_IMAGE}|$REGISTRY_PULL/console:$CONSOLE_TAG|g" \
+      -e "s|\${LLM_MODEL}|$llm_model|g" \
+      -e "s|\${HOST_PORT_GRAFANA}|$HOST_PORT_GRAFANA|g" "$1"
 }
 apply_cm() { # apply_cm NAMESPACE NAME SOURCE...
   local ns="$1" name="$2"; shift 2
@@ -99,8 +104,8 @@ apply_cm ai fixtures-records "$ROOT/scenarios/fixtures/records.json"
 # The live policy may differ from git after `make policy-set`; only seed it if missing
 # (`make reset` restores it from policy/policy.yaml).
 kubectl -n ai get configmap guard-policy >/dev/null 2>&1 || apply_cm ai guard-policy "$ROOT/policy/policy.yaml"
-for m in 30-mock-llm 20-guard 21-mcp-servers; do render_manifest "$ROOT/deploy/manifests/$m.yaml" | kubectl apply -f - >/dev/null; done
-for d in mock-llm mcp-docs mcp-actions guard; do kubectl -n ai rollout status "deployment/$d" --timeout=300s >/dev/null; done
+for m in 30-mock-llm 20-guard 21-mcp-servers 22-agents; do render_manifest "$ROOT/deploy/manifests/$m.yaml" | kubectl apply -f - >/dev/null; done
+for d in mock-llm mcp-docs mcp-actions guard researcher executor console; do kubectl -n ai rollout status "deployment/$d" --timeout=300s >/dev/null; done
 
 log "network policies"
 case "$CONTAINER_RUNTIME" in

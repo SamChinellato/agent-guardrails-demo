@@ -38,6 +38,8 @@ apply_secret gateway consumer-keys \
   demo-user=consumer-demo-user researcher=consumer-researcher executor=consumer-executor probe=consumer-probe
 apply_secret gateway killswitch-tokens \
   operator=killswitch-operator-token guard=killswitch-guard-token alertmanager=killswitch-alertmanager-token
+# Agents and the console carry their own consumer key (7.7, DEMO-01)
+apply_secret ai agent-keys researcher=consumer-researcher executor=consumer-executor demo-user=consumer-demo-user
 kubectl -n observability create secret generic grafana-admin \
   --from-literal=admin-user=admin --from-file=admin-password="$DIR/grafana-admin-password" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null

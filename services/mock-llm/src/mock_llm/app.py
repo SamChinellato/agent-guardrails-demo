@@ -37,6 +37,7 @@ _cache: dict[Path, tuple[float, dict]] = {}
 
 def load_script(scenario: str) -> dict | None:
     """Read a scenario script, re-reading when the file changes (ConfigMap updates)."""
+    scenario = scenario.split(":", 1)[0]  # "s3:scripted" uses script s3 (D-032)
     if not scenario or "/" in scenario or scenario.startswith("."):
         return None
     path = SCRIPTS_DIR / f"{scenario}.yaml"

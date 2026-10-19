@@ -11,9 +11,9 @@ mkdir -p "$ROOT/.cache"
 TAGS="$ROOT/.cache/image-tags.env"
 : >"$TAGS.tmp"
 
-# Workspace members except the shared library
+# Workspace members except the shared library and the host-side CLI
 members="$(sed -n '/^\[tool.uv.workspace\]/,/^\[/p' "$SERVICES_DIR/pyproject.toml" \
-  | grep -oE '"[a-z0-9-]+"' | tr -d '"' | grep -vx common)"
+  | grep -oE '"[a-z0-9-]+"' | tr -d '"' | grep -vxE 'common|cli')"   # cli runs on the host
 
 # One tag for all services: they share demo-common and uv.lock
 tag="$(git_tag services)"

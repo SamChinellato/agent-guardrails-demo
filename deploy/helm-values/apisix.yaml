@@ -68,6 +68,7 @@ apisix:
     - key-auth
     - consumer-restriction
     - proxy-rewrite
+    - redirect                 # /console -> /console/
     - ai-prompt-guard
     - ai-proxy
     - ai-proxy-multi

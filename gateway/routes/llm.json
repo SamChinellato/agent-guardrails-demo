@@ -69,7 +69,7 @@
         "(?i)jailbreak"
       ],
       "match_all_roles": false,
-      "match_all_conversation_history": false
+      "match_all_conversation_history": true
     },
     "ai-injection-guard": {
       "stage": "llm",

@@ -1,0 +1,89 @@
+{
+  "id": "llm-scripted",
+  "name": "llm-scripted",
+  "desc": "Scripted runs (X-Demo-Scenario '<id>:scripted' or 'smoke') always use mock-llm, so scenarios are repeatable in live mode (D-032)",
+  "uri": "/llm/v1/chat/completions",
+  "methods": [
+    "POST"
+  ],
+  "plugin_config_id": "pc-llm",
+  "timeout": {
+    "connect": 5,
+    "send": 120,
+    "read": 120
+  },
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "researcher",
+        "executor",
+        "probe"
+      ],
+      "rejected_code": 403,
+      "rejected_msg": "consumer not allowed on this route"
+    },
+    "proxy-rewrite": {
+      "headers": {
+        "set": {
+          "X-Agent-Id": "$consumer_name"
+        }
+      }
+    },
+    "request-validation": {
+      "_meta": {
+        "priority": 2300
+      },
+      "rejected_code": 400,
+      "rejected_msg": "invalid chat completion request: streaming is not supported and messages are required",
+      "body_schema": {
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "minItems": 1
+          },
+          "stream": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        }
+      }
+    },
+    "ai-prompt-guard": {
+      "deny_patterns": [
+        "(?i)ignore (all )?(the )?(previous|prior|above) instructions",
+        "(?i)disregard (all )?(the )?(previous|prior|above) (instructions|rules)",
+        "(?i)you are now (a|an|in|the|DAN)\\b",
+        "(?i)(reveal|print|show|repeat|output) (your|the) system prompt",
+        "(?i)system prompt",
+        "(?i)developer mode (enabled|on)",
+        "(?i)jailbreak"
+      ],
+      "match_all_roles": false,
+      "match_all_conversation_history": true
+    },
+    "ai-injection-guard": {
+      "stage": "llm",
+      "timeout_ms": 3000,
+      "fail_open": false
+    },
+    "ai-proxy": "${LLM_PROVIDER_MOCK}"
+  },
+  "priority": 10,
+  "vars": [
+    [
+      "http_x_demo_scenario",
+      "~~",
+      "(:scripted$|^smoke$)"
+    ]
+  ]
+}

@@ -1,0 +1,4 @@
+# S1 direct injection: attacks never reach the agent; benign prompts get a short answer.
+agents:
+  researcher:
+    - final: "Two suppliers need follow-up: Blue Ridge Components (delivery and quality) and Summit Industrial Coatings (safety data sheets)."

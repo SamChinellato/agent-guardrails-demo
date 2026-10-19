@@ -1,0 +1,68 @@
+{
+  "id": "agent-researcher",
+  "name": "agent-researcher",
+  "desc": "Operator -> researcher (F1); inbound prompt-injection filters run before the agent sees the message (DEMO-02)",
+  "uri": "/agents/researcher/*",
+  "methods": [
+    "POST"
+  ],
+  "plugin_config_id": "pc-agents",
+  "timeout": {
+    "connect": 5,
+    "send": 600,
+    "read": 600
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "researcher.ai.svc.cluster.local:8000": 1
+    },
+    "timeout": {
+      "connect": 5,
+      "send": 600,
+      "read": 600
+    }
+  },
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "demo-user"
+      ],
+      "rejected_code": 403,
+      "rejected_msg": "consumer not allowed on this route"
+    },
+    "proxy-rewrite": {
+      "regex_uri": [
+        "^/agents/researcher/(.*)",
+        "/$1"
+      ],
+      "headers": {
+        "set": {
+          "X-Agent-Id": "$consumer_name"
+        }
+      }
+    },
+    "ai-prompt-guard": {
+      "deny_patterns": [
+        "(?i)ignore (all )?(the )?(previous|prior|above) instructions",
+        "(?i)disregard (all )?(the )?(previous|prior|above) (instructions|rules)",
+        "(?i)you are now (a|an|in|the|DAN)\\b",
+        "(?i)(reveal|print|show|repeat|output) (your|the) system prompt",
+        "(?i)system prompt",
+        "(?i)developer mode (enabled|on)",
+        "(?i)jailbreak"
+      ],
+      "match_all_roles": false,
+      "match_all_conversation_history": true
+    },
+    "ai-injection-guard": {
+      "stage": "agent_ingress",
+      "timeout_ms": 3000,
+      "fail_open": false
+    }
+  }
+}

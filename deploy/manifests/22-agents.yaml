@@ -1,0 +1,183 @@
+# Agents (7.7) and the presenter console (DEMO-01). ${AGENTS_IMAGE}, ${CONSOLE_IMAGE},
+# ${LLM_MODEL} and ${HOST_PORT_GRAFANA} are substituted by scripts/up.sh.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: researcher
+  namespace: ai
+  labels: {app: researcher, demo/metrics: "true"}
+spec:
+  selector: {app: researcher}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: researcher
+  namespace: ai
+  labels: {app: researcher}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: researcher}
+  template:
+    metadata:
+      labels: {app: researcher}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: researcher
+          image: ${AGENTS_IMAGE}
+          command: ["researcher"]
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.gateway.svc.cluster.local"}
+            - name: AGENT_API_KEY
+              valueFrom: {secretKeyRef: {name: agent-keys, key: researcher}}
+            - {name: MCP_SERVERS, value: "docs"}
+            - {name: LLM_MODEL, value: "${LLM_MODEL}"}
+            - {name: MAX_STEPS, value: "6"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: executor
+  namespace: ai
+  labels: {app: executor, demo/metrics: "true"}
+spec:
+  selector: {app: executor}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: executor
+  namespace: ai
+  labels: {app: executor}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: executor}
+  template:
+    metadata:
+      labels: {app: executor}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: executor
+          image: ${AGENTS_IMAGE}
+          command: ["executor"]
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.gateway.svc.cluster.local"}
+            - name: AGENT_API_KEY
+              valueFrom: {secretKeyRef: {name: agent-keys, key: executor}}
+            - {name: MCP_SERVERS, value: "actions"}
+            - {name: LLM_MODEL, value: "${LLM_MODEL}"}
+            - {name: MAX_STEPS, value: "6"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: console
+  namespace: ai
+  labels: {app: console, demo/metrics: "true"}
+spec:
+  selector: {app: console}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  namespace: ai
+  labels: {app: console}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: console}
+  template:
+    metadata:
+      labels: {app: console}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: console
+          image: ${CONSOLE_IMAGE}
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.gateway.svc.cluster.local"}
+            - name: DEMO_USER_KEY
+              valueFrom: {secretKeyRef: {name: agent-keys, key: demo-user}}
+            - {name: GRAFANA_PORT, value: "${HOST_PORT_GRAFANA}"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

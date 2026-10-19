@@ -1,0 +1,6 @@
+id: s1
+title: Direct prompt injection
+story: Attacks typed at the agent are stopped at the gateway before the agent sees them; normal questions pass.
+policy: {}
+attacks: fixtures/attacks.yaml  # crude -> regex guard, subtle -> classifier, benign -> pass
+show: [AI Gateway Overview]

@@ -14,7 +14,7 @@ exclude-newer = "2026-10-05T00:00:00Z"
 dev = ["pytest>=9,<10"]
 
 [tool.uv.workspace]
-members = ["common", "mock-llm", "mcp-docs", "mcp-actions", "guard"]
+members = ["common", "mock-llm", "mcp-docs", "mcp-actions", "guard", "agents", "console", "cli"]
 
 [tool.uv.sources]
 demo-common = { workspace = true }

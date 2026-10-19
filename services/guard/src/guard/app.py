@@ -73,7 +73,10 @@ def _subjects(messages: list[dict], stage: str, agent: str) -> list[Subject]:
         elif stage == "llm" and role == "user":
             out.append(Subject("llm.user_prompt_injection", agent, route, content=text))
         elif stage == "llm" and role == "tool":
-            out.append(Subject("llm.tool_message_injection", agent, route, content=text))
+            if text in state["engine"].own:
+                continue  # the guard's own quarantine notice
+            origin = "external" if text in state["engine"].external else "agent"
+            out.append(Subject("llm.tool_message_injection", agent, route, content=text, origin=origin))
     return out
 
 

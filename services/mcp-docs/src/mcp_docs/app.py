@@ -20,13 +20,27 @@ def _docs() -> dict[str, Path]:
 
 def _title(path: Path) -> str:
     first = path.read_text().splitlines()[0] if path.stat().st_size else path.stem
-    return first.lstrip("# ").strip()
+    return first.lstrip("# ").replace("Supplier review: ", "").strip()
 
 
-@server.tool(description="List the supplier review documents that can be read.")
+def _summary(path: Path) -> str:
+    """The visible status line and performance bullets only: never comments or other sections,
+    so a document's hidden text can't reach the agent through the listing."""
+    lines, in_perf, out = path.read_text().splitlines(), False, []
+    for line in lines:
+        if line.startswith("**Category:**"):
+            out.append(line.replace("**", "").strip())
+        elif line.startswith("## "):
+            in_perf = line.startswith("## Performance")
+        elif in_perf and line.startswith("- "):
+            out.append(line[2:].strip())
+    return "; ".join(out)
+
+
+@server.tool(description="List the supplier review documents, each with its id, supplier name and a one-line performance summary.")
 def list_documents(ctx: Context) -> list[dict]:
     with tool_span(ctx, "list_documents", "docs"):
-        docs = [{"id": doc_id, "title": _title(p)} for doc_id, p in _docs().items()]
+        docs = [{"id": doc_id, "supplier": _title(p), "summary": _summary(p)} for doc_id, p in _docs().items()]
         log.info("tool call", extra={"tool": "list_documents", "count": len(docs)})
         return docs
 

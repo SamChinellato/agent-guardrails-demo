@@ -38,7 +38,8 @@ INJECTION_CHECKS = {
 
 @dataclass
 class Subject:
-    """What a check looks at."""
+    """What a check looks at. origin is "external" for untrusted content (what a person
+    typed, MCP tool results) and "agent" for text the agent produced itself (D-034)."""
 
     check: str
     agent: str
@@ -46,6 +47,7 @@ class Subject:
     content: str | None = None  # text for injection checks
     tool: str | None = None  # "server.tool" for tool checks
     arguments: dict = field(default_factory=dict)
+    origin: str = "external"
 
 
 @dataclass(frozen=True)
@@ -97,13 +99,17 @@ class LocalDecider:
 
     def _injection(self, policy: Policy, s: Subject) -> Judgement:
         text = s.content or ""
-        model = self._score(text)
         heur = heuristic(text)
+        # The classifier is for untrusted content. It scores many short, system-sounding
+        # agent messages ("Not done: ...", hand-off results) as injections, so agent-produced
+        # text gets the heuristics only (D-034).
+        model = self._score(text) if s.origin == "external" else 0.0
         threshold = policy.check(s.check).threshold or 0.9
         score, rule_id = (heur.score, heur.rule_id) if heur.score > model else (model, "classifier")
         if score >= threshold:
             return Judgement(True, score, rule_id, f"prompt injection suspected (score {score:.2f} >= {threshold})")
-        return Judgement(False, score, rule_id if heur.rule_id else None, "no injection detected")
+        reason = "no injection detected" + ("" if s.origin == "external" else " (agent-produced text: heuristics only)")
+        return Judgement(False, score, rule_id if heur.rule_id else None, reason)
 
     def _allowlist(self, policy: Policy, s: Subject) -> Judgement:
         if s.tool in policy.deny_tools_all:
@@ -118,9 +124,11 @@ class LocalDecider:
         if domains := rules.get("to_domain_allow"):
             recipients = args.get("to", [])
             recipients = [recipients] if isinstance(recipients, str) else list(recipients)
+            allowed_domains = {d.lower() for d in domains}
             for r in (x.strip() for raw in recipients for x in str(raw).split(",")):
                 domain = r.rsplit("@", 1)[-1].lower() if "@" in r else ""
-                if domain not in {d.lower() for d in domains}:
+                # demo.local and its subdomains (e.g. blueridge.demo.local) are internal
+                if not any(domain == d or domain.endswith("." + d) for d in allowed_domains):
                     return Judgement(True, 1.0, "to_domain_allow", f"recipient domain {domain or r!r} is not allowed")
         if allowed := rules.get("fields_allow"):
             extra = sorted(set((args.get("fields") or {}).keys()) - set(allowed))
@@ -129,11 +137,38 @@ class LocalDecider:
         return Judgement(False, 0.0, None, "arguments allowed")
 
 
+class SeenTexts:
+    """Hashes of tool results the MCP proxy inspected, and of the guard's own replacement
+    text, so the LLM-stage check can tell external content from agent-produced text."""
+
+    def __init__(self, ttl: float = 3600, limit: int = 20000):
+        self.ttl, self.limit = ttl, limit
+        self._seen: dict[str, float] = {}
+
+    @staticmethod
+    def key(text: str) -> str:
+        return hashlib.sha256(text.strip().encode()).hexdigest()
+
+    def add(self, *texts: str) -> None:
+        now = time.monotonic()
+        if len(self._seen) > self.limit:
+            self._seen = {k: t for k, t in self._seen.items() if now - t < self.ttl}
+        for text in texts:
+            if text:
+                self._seen[self.key(text)] = now
+
+    def __contains__(self, text: str) -> bool:
+        t = self._seen.get(self.key(text))
+        return t is not None and time.monotonic() - t < self.ttl
+
+
 class Engine:
     def __init__(self, store: PolicyStore, decider: Decider, on_critical=None):
         self.store = store
         self.decider = decider
         self.on_critical = on_critical  # callable(Decision), e.g. killswitch auto-trip
+        self.external = SeenTexts()  # MCP results seen by the proxy
+        self.own = SeenTexts()  # text the guard itself wrote (quarantine notices)
 
     def evaluate(self, s: Subject) -> Decision | None:
         """Judge one subject under the current policy. None when the check is off."""

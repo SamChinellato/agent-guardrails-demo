@@ -1,0 +1,45 @@
+{
+  "id": "console",
+  "name": "console",
+  "desc": "Presenter chat console (DEMO-01). No key: its backend calls the agent route as demo-user",
+  "uris": [
+    "/console/",
+    "/console/*"
+  ],
+  "methods": [
+    "GET",
+    "POST"
+  ],
+  "timeout": {
+    "connect": 5,
+    "send": 600,
+    "read": 600
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "console.ai.svc.cluster.local:8000": 1
+    },
+    "timeout": {
+      "connect": 5,
+      "send": 600,
+      "read": 600
+    }
+  },
+  "plugins": {
+    "proxy-rewrite": {
+      "regex_uri": [
+        "^/console/(.*)",
+        "/$1"
+      ]
+    },
+    "opentelemetry": {
+      "sampler": {
+        "name": "always_on"
+      }
+    },
+    "prometheus": {
+      "prefer_name": true
+    }
+  }
+}

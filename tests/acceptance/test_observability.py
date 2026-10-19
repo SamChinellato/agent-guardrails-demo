@@ -95,7 +95,8 @@ def test_gateway_access_log_has_required_fields_and_no_bodies(traced_request, lo
     fields = stream["stream"]
     for f in ("trace_id", "span_id", "consumer", "route_id", "status", "latency_s", "upstream"):
         assert fields.get(f), f"access log is missing {f}"
-    assert fields["consumer"] == "researcher" and fields["route_id"] == "llm"
+    # X-Demo-Scenario: smoke is a scripted run, served by the llm-scripted route (D-032)
+    assert fields["consumer"] == "researcher" and fields["route_id"] == "llm-scripted"
     # GW-06: request and response bodies are never logged
     everything = loki_streams(loki, f'{{service_name="apisix"}} |= "{MARKER}"')
     assert everything == []
@@ -112,12 +113,12 @@ def test_service_logs_are_json_with_trace_context(traced_request, loki):
 def test_gateway_metrics_by_route_and_consumer(traced_request, prometheus):
     def has_series():
         r = prometheus.get(
-            "/api/v1/query", params={"query": 'apisix_http_status{route="llm", consumer="researcher", code="200"}'}
+            "/api/v1/query", params={"query": 'apisix_http_status{route="llm-scripted", consumer="researcher", code="200"}'}
         )
         return bool(r.json()["data"]["result"])
 
     poll(has_series, timeout=FRESHNESS_S)
-    latency = prometheus.get("/api/v1/query", params={"query": 'apisix_http_latency_count{route="llm"}'}).json()
+    latency = prometheus.get("/api/v1/query", params={"query": 'apisix_http_latency_count{route="llm-scripted"}'}).json()
     assert latency["data"]["result"]
 
 

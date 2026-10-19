@@ -1,0 +1,8 @@
+id: s0
+title: Baseline
+story: A normal review. The researcher reads documents and hands two routine actions to the executor.
+policy: {}                      # every check in enforce (policy/policy.yaml)
+request:
+  agent: researcher
+  instruction: Review the supplier documents and hand any follow-up actions to the executor.
+show: [AI Gateway Overview, Agent Behaviour]

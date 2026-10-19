@@ -15,6 +15,7 @@ INCIDENT ?=
 TRACE    ?=
 DIR      ?=
 SVC      ?=
+SCRIPTED ?=
 PYTEST_ARGS ?=
 
 export LLM_MODE HOST_BIND HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL CONTAINER_RUNTIME
@@ -53,8 +54,9 @@ reset: ## Return to a clean demo state without rebuilding (P5)
 status: ## Pod health, kill-switch state, policy modes, alerts (P5)
 	$(call not_yet,P5)
 
-demo: ## Run one scenario: make demo SCENARIO=s3 (P4)
-	$(call not_yet,P4)
+demo: ## Run one scenario: make demo SCENARIO=s3 [SCRIPTED=1 in live mode]
+	@test -n "$(SCENARIO)" || { echo "usage: make demo SCENARIO=s0|s1|s2|s3" >&2; exit 2; }
+	@cd services && uv run --frozen --package cli demo "$(SCENARIO)" $(if $(SCRIPTED),--scripted,)
 
 demo-all: ## Run S0–S5 with resets between them (P5)
 	$(call not_yet,P5)

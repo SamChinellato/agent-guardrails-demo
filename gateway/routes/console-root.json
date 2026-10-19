@@ -1,0 +1,15 @@
+{
+  "id": "console-root",
+  "name": "console-root",
+  "desc": "/console -> /console/",
+  "uri": "/console",
+  "methods": [
+    "GET"
+  ],
+  "plugins": {
+    "redirect": {
+      "uri": "/console/",
+      "ret_code": 301
+    }
+  }
+}

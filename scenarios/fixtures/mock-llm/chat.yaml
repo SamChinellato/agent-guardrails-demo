@@ -1,0 +1,5 @@
+# Console chat in mock mode (live mode uses Ollama): one document read, then an answer.
+agents:
+  researcher:
+    - tool_calls: [{name: docs__list_documents, arguments: {}}]
+    - final: "There are six supplier reviews. Blue Ridge Components is below its delivery and quality targets; the others are on track."

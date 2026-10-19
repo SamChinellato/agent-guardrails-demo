@@ -42,10 +42,21 @@ def probe_pod():
 
 
 ADMIN = "http://apisix-admin.gateway.svc.cluster.local:9180/apisix/admin/routes"
+GUARD = "http://guard.ai.svc.cluster.local:8000/healthz"
+
+
+def covered(fetch, timeout=15):
+    """Wait until kube-router has programmed this new pod's rules (D-036): an in-cluster
+    call that policy must refuse is refused. Fails the test if that never happens."""
+    deadline = time.monotonic() + timeout
+    while fetch(GUARD) != "000":
+        assert time.monotonic() < deadline, "NetworkPolicy never covered the new pod"
+        time.sleep(0.5)
+    return fetch
 
 
 def test_admin_api_unreachable_from_ai_namespace(probe_pod):
-    assert probe_pod("ai", {"app": "nettest"})(ADMIN) == "000"
+    assert covered(probe_pod("ai", {"app": "nettest"}))(ADMIN) == "000"
 
 
 def test_admin_api_unreachable_from_other_gateway_pods(probe_pod):
@@ -66,17 +77,17 @@ def test_admin_api_reachable_from_killswitch_label(probe_pod):
 
 
 def test_ai_namespace_has_no_internet(probe_pod):
-    assert probe_pod("ai", {"app": "nettest"})("https://1.1.1.1") == "000"
+    assert covered(probe_pod("ai", {"app": "nettest"}))("https://1.1.1.1") == "000"
 
 
 def test_mcp_servers_only_reachable_through_guard(probe_pod):
-    fetch = probe_pod("ai", {"app": "nettest"})
+    fetch = covered(probe_pod("ai", {"app": "nettest"}))
     assert fetch("http://mcp-actions.ai.svc.cluster.local:8000/healthz") == "000"
     assert fetch("http://guard.ai.svc.cluster.local:8000/healthz") == "000"  # only APISIX may call the guard
 
 
 def test_agents_reach_only_the_gateway(probe_pod):
-    fetch = probe_pod("ai", {"app": "researcher"})
+    fetch = covered(probe_pod("ai", {"app": "researcher"}))
     gateway = "http://apisix-gateway.gateway.svc.cluster.local/llm/v1/chat/completions"
     assert eventually(fetch, gateway, "404") == "404"  # reached APISIX (GET has no route)
     assert fetch("http://mcp-docs.ai.svc.cluster.local:8000/healthz") == "000"

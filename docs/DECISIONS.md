@@ -317,3 +317,59 @@ The policies themselves were never wrong: on a successful sync they enforce as w
   - Only the guard reaches the MCP servers.
   - Agents reach only APISIX.
   - Only the `killswitch` label reaches the Admin API, and APISIX egress outside the cluster is limited to the host Ollama.
+
+## D-032 Scripted runs are explicit: `X-Demo-Scenario: <id>:scripted` (P4)
+
+DEMO-03 and repeatable rehearsals need scripted LLM behaviour even when the demo runs live on Ollama. A second route, **`llm-scripted`**, has the same URI, plugins, guards and kill switch as `llm`. It has a higher priority and matches `X-Demo-Scenario` ending in `:scripted` (or exactly `smoke`), and always sends requests to mock-llm. Every other request uses the `llm` route, whose backend `LLM_MODE` selects.
+
+- mock-llm drops the suffix, so `s3:scripted` uses script `s3.yaml`.
+- `make demo SCENARIO=s3` runs live in live mode. `SCRIPTED=1` forces the script. In mock mode everything is scripted anyway.
+- The console's rogue button always sends `s6-rogue:scripted`, and free chat sends `chat`, which is live in live mode.
+- This adds one route ID, `llm-scripted`, to GW-02's fixed list, and `console`/`console-root` for DEMO-01.
+
+## D-033 APISIX 3.19 `ai-prompt-guard` bug: empty 200 when there's nothing to check (P4)
+
+**Finding.** Every agent failed on its *second* LLM call. The gateway answered `200 text/plain` with an empty body, which the OpenAI SDK passes through as a string. Bisecting with scratch routes isolated `ai-prompt-guard`. In 3.19's `access()`, when the messages to check are filtered down to none, the code does `return 200` (`#messages == 0 --nothing to check`). In the access phase that ends the request with an empty 200 instead of letting it continue. This happens whenever the last message isn't from the user, such as a tool result, which is every agent loop step after the first.
+
+**Workaround.** No code patch: set `match_all_conversation_history: true` on the routes that use the plugin (`llm`, `llm-scripted`, `agent-researcher`). The filter then always sees the conversation's user messages, so the early return never happens. The cost is that each step re-checks the original user message with a regex, which is negligible and also slightly stronger. Worth reporting upstream.
+
+## D-034 The classifier judges external content; agent-produced text gets heuristics only (P4)
+
+**Finding (live mode).** The DeBERTa classifier scores many short, system-sounding messages as injections:
+
+| Message | Score |
+| --- | --- |
+| "Not done: this document could not be shown." | 1.000 |
+| `{"executor_status": "completed", …}` | 0.917 |
+| The guard's own "Content quarantined by policy (decision …)" | 0.991 |
+| "Executor result (status completed): I could not export the customer data or send the email." | 0.988 |
+
+In S0 live, the executor's relayed denial was then blocked as an injection on its next LLM call, and the researcher's call after that. Wording can't fix this reliably, because live replies come from the model.
+
+**Chosen.** The classifier is for untrusted content: what a person typed (agent ingress and LLM user messages) and MCP tool results. On the LLM route, a `tool` message gets the classifier only if its text matches a result the MCP proxy inspected, kept as SHA-256 values in the guard for 1 h. So both checkpoints judge the same content the same way, and S3's monitor-mode flag still happens. Other tool messages are produced by the agent itself: hand-off results, relayed denials, the guard's own quarantine notices (skipped). They get the regex heuristics only, and the decision record says so in its `reason`. Agents also relay denials as plain sentences, for example "Not done: emails can only go to demo.local addresses."
+
+**Trade-off.** Text an agent writes itself isn't classifier-checked on the LLM route. Its inputs were: what the person typed at ingress, tool results at the MCP layer, and the other agent's input at its own checkpoints.
+
+## D-035 Live model: `granite4:micro`, not `qwen3:4b` (P4, NFR-05 `DEVIATION`)
+
+Measured on this host (i9-12900H, CPU only, Ollama 0.12.10): prompt processing about 41 tok/s, generation about 16 tok/s.
+
+- `qwen3:4b` still produced about 400 thinking tokens per call. Neither `/no_think` in the system or user prompt, nor `reasoning_effort: none`, nor `think: false` on the OpenAI-compatible endpoint, disabled it reliably. A six-step chat took 334 s.
+- Benchmarked on the agent's real loop, with the final system prompt:
+
+| Model | Time per question | Answers |
+| --- | --- | --- |
+| `qwen3:4b-instruct` | 18–25 s | Often wrong, e.g. it called Northwind's 97.2% "below 95%" |
+| `granite4:micro` (IBM, 3B) | 15–21 s | Correct, including both suppliers below target |
+
+- The spec's named fallback, `qwen2.5:3b`, read only one document.
+
+`granite4:micro` is pinned by digest in `versions.env`; `prereqs` checks it. `list_documents` now returns each supplier's visible status and performance bullets, never comments or other sections, so overview questions take one tool call. The researcher's prompt asks for at most three plain sentences. Live S0 ran end to end in 81 s; the console's live chat answers in about 20–30 s. Live answers still vary run to run (the spec allows this), while gateway behaviour is deterministic.
+
+## D-036 kube-router startup window for new pods (P3/P4)
+
+Under normal load, a new pod's NetworkPolicy rules are programmed about 60 ms after it is Ready, measured three times. During heavy pod churn, such as the network tests starting and stopping several pods quickly, a new pod's traffic passed **before** its rules existed: kube-router lets traffic through for a pod it hasn't programmed yet. That's a property of k3s's built-in controller, not of the policies.
+
+- **Demo workloads are long-running,** so the window only applies at pod start.
+- **Tests check coverage, then correctness.** They first wait, up to 15 s, until an in-cluster call that policy must refuse is refused. That proves the pod's rules exist; if it never happens the test fails. Only then do they assert the property, such as no internet.
+- **`make up`** runs `verify-netpol.sh` the same way. This is recorded under NFR-08 as a known limitation.

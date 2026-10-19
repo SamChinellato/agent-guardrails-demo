@@ -1,0 +1,50 @@
+{
+  "id": "agent-executor",
+  "name": "agent-executor",
+  "desc": "Researcher -> executor hand-off (F4)",
+  "uri": "/agents/executor/*",
+  "methods": [
+    "POST"
+  ],
+  "plugin_config_id": "pc-agents",
+  "timeout": {
+    "connect": 5,
+    "send": 600,
+    "read": 600
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "executor.ai.svc.cluster.local:8000": 1
+    },
+    "timeout": {
+      "connect": 5,
+      "send": 600,
+      "read": 600
+    }
+  },
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "researcher"
+      ],
+      "rejected_code": 403,
+      "rejected_msg": "consumer not allowed on this route"
+    },
+    "proxy-rewrite": {
+      "regex_uri": [
+        "^/agents/executor/(.*)",
+        "/$1"
+      ],
+      "headers": {
+        "set": {
+          "X-Agent-Id": "$consumer_name"
+        }
+      }
+    }
+  }
+}

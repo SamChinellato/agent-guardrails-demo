@@ -1,0 +1,16 @@
+[project]
+name = "cli"
+version = "0.1.0"
+description = "Host-side demo runner (make demo) and, from P6, the evidence tools"
+requires-python = "==3.12.*"
+dependencies = ["httpx>=0.28,<0.29", "pyyaml>=6.0,<7"]
+
+[project.scripts]
+demo = "demo_cli.runner:main"
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/demo_cli"]

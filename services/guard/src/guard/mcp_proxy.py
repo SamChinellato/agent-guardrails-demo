@@ -106,16 +106,18 @@ class McpProxy:
         return [t for t in tools if f"{server}.{t.get('name')}" in allowed]
 
     async def _scan_result(self, server: str, agent: str, route: str, name: str, result: dict) -> dict:
-        text = "\n\n".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
+        parts = [c.get("text", "") for c in result.get("content", []) if c.get("type") == "text"]
+        text = "\n\n".join(parts)
         if not text:
             return result
+        # Remember this external content in the forms an agent may pass it back to the LLM
+        self.engine.external.add(text, "\n".join(parts), *parts)
         d = await run_in_threadpool(
             self.engine.evaluate,
             Subject("mcp.tool_result_injection", agent, route, content=text, tool=f"{server}.{name}"),
         )
         if d and d.verdict == "block":
-            return {
-                "content": [{"type": "text", "text": f"Content quarantined by policy (decision {d.decision_id})"}],
-                "isError": True,
-            }
+            notice = f"Content quarantined by policy (decision {d.decision_id})"
+            self.engine.own.add(notice)
+            return {"content": [{"type": "text", "text": notice}], "isError": True}
         return result
