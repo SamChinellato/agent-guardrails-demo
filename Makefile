@@ -16,19 +16,22 @@ TRACE    ?=
 DIR      ?=
 SVC      ?=
 
-export LLM_MODE
+export LLM_MODE HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL CONTAINER_RUNTIME
 
 define not_yet
 	@echo "make $@: not implemented yet (phase $(1)). See docs/REQUIREMENTS_STATUS.md." >&2; exit 2
 endef
 
-.PHONY: help prereqs prefetch up down reset status demo demo-all trip kill-reset \
+.PHONY: help tools prereqs prefetch up down reset status demo demo-all trip kill-reset \
         policy-set evidence evidence-verify test clean-room logs pin-check
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-prereqs: ## Check tool versions, Docker memory, disk, and (live) host Ollama
+tools: ## Install pinned k3d, kubectl and helm into .tools/bin (checksum-verified)
+	@scripts/install-tools.sh
+
+prereqs: ## Check runtime (Docker/Podman), tools, memory, disk, ports, (live) host Ollama
 	@scripts/prereqs.sh $(LLM_MODE)
 
 pin-check: ## Fail if upstream image digests drifted from versions.env

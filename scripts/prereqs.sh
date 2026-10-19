@@ -2,18 +2,13 @@
 # Prerequisite checks (REP-05). Usage: scripts/prereqs.sh [mock|live]
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../versions.env
-source "$ROOT/versions.env"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 LLM_MODE="${1:-${LLM_MODE:-mock}}"
 FAILED=0
 
 ok()   { printf '  \033[32mok\033[0m   %s\n' "$*"; }
 fail() { printf '  \033[31mFAIL\033[0m %s\n' "$*"; FAILED=1; }
 warn() { printf '  \033[33mwarn\033[0m %s\n' "$*"; }
-
-# version_ge A B: true when A >= B (semver-ish, leading "v" ignored)
-version_ge() { [[ "$(printf '%s\n%s\n' "${2#v}" "${1#v}" | sort -V | head -1)" == "${2#v}" ]]; }
 
 check_tool() {
   local name="$1" min="$2" cmd="$3" hint="$4" ver
@@ -28,34 +23,76 @@ check_tool() {
 
 echo "Checking prerequisites (LLM_MODE=$LLM_MODE)"
 
-check_tool docker  "$DOCKER_MIN_VERSION"  "docker version --format '{{.Client.Version}}'" "https://docs.docker.com/engine/install/"
-check_tool k3d     "$K3D_MIN_VERSION"     "k3d version"                    "https://k3d.io/#installation"
-check_tool kubectl "$KUBECTL_MIN_VERSION" "kubectl version --client"       "https://kubernetes.io/docs/tasks/tools/"
-check_tool helm    "$HELM_MIN_VERSION"    "helm version --short"           "https://helm.sh/docs/intro/install/"
+# Container runtime: Docker, or Podman through its Docker-compatible socket (D-009)
+if ! detect_runtime; then
+  fail "no container runtime found. Install Docker (https://docs.docker.com/engine/install/) or Podman >= $PODMAN_MIN_VERSION"
+elif [[ "$CONTAINER_RUNTIME" == docker ]]; then
+  check_tool docker "$DOCKER_MIN_VERSION" "docker version --format '{{.Server.Version}}'" "https://docs.docker.com/engine/install/"
+else
+  check_tool podman "$PODMAN_MIN_VERSION" "podman version --format '{{.Client.Version}}'" "https://podman.io/docs/installation"
+  if [[ "$RUNTIME_ROOTLESS" == true ]]; then
+    if curl -s -m 5 --unix-socket "$DOCKER_SOCK" http://d/_ping 2>/dev/null | grep -q OK; then
+      ok "podman API socket $DOCKER_SOCK"
+    else
+      fail "podman API socket not answering at $DOCKER_SOCK. Run: systemctl --user enable --now podman.socket"
+    fi
+    # k3s in a rootless container needs these controllers delegated to the user session
+    ctrls="$(podman info --format '{{.Host.CgroupControllers}}' 2>/dev/null | tr -d '[]')"
+    missing=""
+    for c in cpu cpuset io memory pids; do [[ " $ctrls " == *" $c "* ]] || missing+="$c "; done
+    if [[ -z "$missing" ]]; then ok "cgroup controllers delegated ($ctrls)"
+    else
+      fail "cgroup controllers not delegated: ${missing}(k3s fails with 'failed to find cpuset cgroup'). Fix once with:
+         sudo mkdir -p /etc/systemd/system/user@.service.d
+         printf '[Service]\\nDelegate=cpu cpuset io memory pids\\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+         sudo systemctl daemon-reload   # then restart user@\$(id -u).service or reboot"
+    fi
+  fi
+fi
+
+check_tool k3d     "$K3D_MIN_VERSION"     "k3d version"                    "Run: make tools"
+check_tool kubectl "$KUBECTL_MIN_VERSION" "kubectl version --client"       "Run: make tools"
+check_tool helm    "$HELM_MIN_VERSION"    "helm version --short"           "Run: make tools"
 check_tool uv      "$UV_VERSION"          "uv --version"                   "https://docs.astral.sh/uv/getting-started/installation/"
 check_tool jq      "1.6"                  "jq --version"                   "install jq from your package manager"
 check_tool make    "4.0.0"                "make --version"                 "install GNU make (macOS: brew install make)"
 check_tool curl    "7.68.0"               "curl --version"                 "install curl"
 
-# Docker daemon access and memory
-if command -v docker >/dev/null 2>&1; then
-  if mem_bytes="$(docker info --format '{{.MemTotal}}' 2>/dev/null)" && [[ "$mem_bytes" -gt 0 ]]; then
-    mem_gb=$(( mem_bytes / 1024 / 1024 / 1024 ))
-    # Ollama runs on the host, so live mode needs no extra Docker memory (D-002).
-    # An "8 GB" Docker VM reports ~7.7 GiB usable, hence the >= 7 floor.
-    if (( mem_gb >= 7 )); then ok "Docker memory ${mem_gb} GB (>= 8 GB)"
-    else fail "Docker has ${mem_gb} GB memory; need >= 8 GB"; fi
+# Memory available to containers. Ollama runs on the host, so live mode needs no extra (D-002).
+# An "8 GB" Docker VM reports ~7.7 GiB usable, hence the >= 7 floor.
+if [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
+  if [[ "$CONTAINER_RUNTIME" == docker ]]; then
+    mem_bytes="$(docker info --format '{{.MemTotal}}' 2>/dev/null || echo 0)"
+    store="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
   else
-    fail "cannot talk to the Docker daemon. Start Docker, or on Linux add yourself to the docker group: sudo usermod -aG docker \$USER (then log out and in)"
+    mem_bytes="$(podman info --format '{{.Host.MemTotal}}' 2>/dev/null || echo 0)"
+    store="$(podman info --format '{{.Store.GraphRoot}}' 2>/dev/null || true)"
   fi
+  mem_gb=$(( mem_bytes / 1024 / 1024 / 1024 ))
+  if (( mem_gb >= 7 )); then ok "$CONTAINER_RUNTIME memory ${mem_gb} GB (>= 8 GB)"
+  else fail "$CONTAINER_RUNTIME has ${mem_gb} GB memory; need >= 8 GB"; fi
 fi
 
-# Free disk where Docker stores data (fall back to the repo's filesystem)
-docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
-disk_path="$ROOT"; [[ -n "$docker_root" && -d "$docker_root" ]] && disk_path="$docker_root"
+# Free disk where images are stored (fall back to the repo's filesystem)
+disk_path="$ROOT"; [[ -n "${store:-}" && -d "${store:-}" ]] && disk_path="$store"
 free_gb=$(( $(df -Pk "$disk_path" | awk 'NR==2{print $4}') / 1024 / 1024 ))
 if (( free_gb >= 20 )); then ok "free disk ${free_gb} GB at $disk_path (>= 20 GB)"
 else fail "only ${free_gb} GB free at $disk_path; need >= 20 GB"; fi
+
+# Host ports mapped by k3d (7.1) and the local registry must be free
+port_in_use() {
+  if command -v ss >/dev/null 2>&1; then [[ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]]
+  else lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; fi
+}
+for p in "$HOST_PORT_GATEWAY" "$HOST_PORT_GRAFANA" "$HOST_PORT_PANEL" "$REGISTRY_PORT"; do
+  if port_in_use "$p"; then
+    owner="$(runtime_cli ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E ":$p->" | awk '{print $1}' | head -1 || true)"
+    if [[ "$owner" == k3d-* ]]; then ok "port $p in use by $owner (this demo)"
+    else fail "host port $p is already in use${owner:+ by $owner}; free it, or override (HOST_PORT_GATEWAY / HOST_PORT_GRAFANA / HOST_PORT_PANEL)"; fi
+  else
+    ok "host port $p free"
+  fi
+done
 
 # Live mode: the host's Ollama must be up, reachable from containers, and hold the pinned model
 if [[ "$LLM_MODE" == "live" ]]; then

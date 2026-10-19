@@ -57,7 +57,7 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | REP-02 | Pinned versions | TODO | `make pin-check` | Images, charts, k3s, model and classifier revision pinned in `versions.env` (P0). Python `uv.lock` files arrive with each service (P1–P4). |
 | REP-03 | Built images | TODO | — |  |
 | REP-04 | Multi-arch | TODO | — | Pins are multi-arch index digests; classifier arm64 load test pending (D-005). |
-| REP-05 | Prerequisite check | DONE | `make prereqs` | Live mode also checks the host Ollama (D-002). |
+| REP-05 | Prerequisite check | DONE | `make prereqs` | Checks Docker or rootless Podman, including cgroup delegation and the API socket (D-009), host ports (D-011), and the host Ollama in live mode (D-002). |
 | REP-06 | Prefetch | TODO | — |  |
 | REP-07 | Idempotence | TODO | — |  |
 | REP-08 | Determinism | TODO | — | Live mode uses the host Ollama (D-002). |

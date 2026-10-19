@@ -12,15 +12,15 @@ The spec's layout calls the root `ai-gateway-demo/`. The repo lives in the exist
 
 **How it works.**
 
-- APISIX `ai-proxy` sends requests to `OLLAMA_HOST_URL=http://host.k3d.internal:11434` in live mode. k3d adds `host.k3d.internal` to the cluster's CoreDNS, and it resolves to the gateway of the k3d Docker network.
-- On Linux, Ollama must listen on all interfaces (`OLLAMA_HOST=0.0.0.0:11434`), because a loopback-only listener can't be reached from containers. `scripts/prereqs.sh live` checks this. On Docker Desktop (macOS), `host.k3d.internal` reaches the host's loopback, so the default bind works.
+- In live mode, APISIX `ai-proxy` sends requests to the host's Ollama on port 11434. The hostname depends on the container runtime, and `scripts/lib.sh` sets it (`OLLAMA_URL`). On Docker it's `host.k3d.internal`: k3d adds it to CoreDNS, and it resolves to the gateway of the k3d network. On rootless Podman it's `host.containers.internal`; see D-009.
+- On Linux, Ollama must listen on all interfaces (`OLLAMA_HOST=0.0.0.0:11434`), because a loopback-only listener can't be reached from containers (verified for Docker; on rootless Podman this host already binds 0.0.0.0, so loopback-only wasn't tested). `scripts/prereqs.sh live` checks this. On Docker Desktop (macOS), `host.k3d.internal` reaches the host's loopback, so the default bind works.
 - The model is still pinned by tag and digest (REP-02). The digest is the one the host's Ollama reports in `/api/tags` after `ollama pull`. `make prefetch LLM_MODE=live` pulls it on the host, and `prereqs` fails if the digest differs.
 - The Ollama server version isn't pinned, because it's host software. `OLLAMA_MIN_VERSION` sets a floor instead.
 
 **Consequences.**
 
 - No Ollama image, Deployment, PVC or pull Job. The ollama row in the component table and section 7.5's Ollama bullet don't apply.
-- NFR-08 still holds: no data leaves the machine. The `ai` namespace keeps egress limited to cluster services. Only the APISIX pods in `gateway` get an egress exception, to the host gateway IP on TCP 11434. Agents still reach the LLM only through APISIX.
+- NFR-08 still holds: no data leaves the machine. The `ai` namespace keeps egress limited to cluster services. Only the APISIX pods in `gateway` get an egress exception, to the host's IP on TCP 11434 (`169.254.1.2/32` on rootless Podman). Agents still reach the LLM only through APISIX.
 - REP-05: live mode no longer needs 12 GB of Docker memory. 8 GB covers both modes, and `prereqs` warns if the host has less than 16 GB RAM (NFR-04).
 - REP-06: offline `make up` in live mode depends on the host's Ollama already holding the model, and `prereqs` checks that.
 - REP-11 (CI) runs mock mode only, so CI doesn't need Ollama.
@@ -81,3 +81,30 @@ etcd v3.7.2 is the newest release, but the 3.7 line is only a few weeks old and 
 ## D-008 APISIX image variant (P0)
 
 The chart's default is `apache/apisix:3.19.0-ubuntu`. The pin is `3.19.0-debian` (smaller base, same APISIX build). `pin-digests.sh` resolved a multi-arch index for it; P1 confirms the amd64 and arm64 entries when the image is pulled. If the custom Lua plugin needs anything only the ubuntu variant has, switch and record it here.
+
+## D-009 Container runtime: Docker or rootless Podman (P0)
+
+**Change.** The spec assumes Docker. This host has rootless Podman 5.4.2, and the user can't reach the Docker socket. The scripts support both. `scripts/lib.sh` picks Docker if its daemon answers and is not Podman, otherwise Podman (`CONTAINER_RUNTIME` overrides). For Podman it exports `DOCKER_HOST` and `DOCKER_SOCK` pointing at the Podman API socket, which k3d uses as if it were Docker. k3d stays the cluster tool, so this is not a component substitution. kind and minikube need the same rootless prerequisites, so switching distro would not have helped.
+
+**Verified on this host (2026-10-19)** with a throwaway cluster:
+
+| Finding | Workaround |
+| --- | --- |
+| k3s exits with `failed to find cpuset cgroup (v2)`: only `cpu memory pids` were delegated to the user session | One-time host change, `Delegate=cpu cpuset io memory pids` in `/etc/systemd/system/user@.service.d/delegate.conf`, then restart `user@<uid>.service`. `prereqs.sh` checks for it and prints the fix |
+| kubelet exits with `open /dev/kmsg: operation not permitted` | k3s arg `--kubelet-arg=feature-gates=KubeletInUserNamespace=true`, added only when the runtime is rootless |
+| `k3d registry create` and `registries.create` fail with `unable to find network with name or ID bridge` | Create the registry first with `k3d registry create … --default-network podman`, then reference it from the cluster with `registries.use` |
+| `host.k3d.internal` resolves to the rootless network namespace's gateway (`10.89.x.1`), not the host | Podman's pasta maps the host at `169.254.1.2` (`host.containers.internal`). k3d's `--host-alias 169.254.1.2:host.containers.internal` adds it to CoreDNS, and pods reached the host Ollama by name |
+| Missing host kernel modules (`br_netfilter`, `iptable_nat`) produce warnings | None needed: Service DNS, NodePort through the k3d load balancer, and pod-to-service traffic all worked |
+| podman API socket disappears after a `user@` restart | `prereqs.sh` checks for it; fix with `systemctl --user enable --now podman.socket` |
+
+NetworkPolicy works under rootless Podman. In the test, an ingress allow-list blocked an unlabelled pod and allowed a labelled one. An egress policy allowed `169.254.1.2:11434` and blocked the internet.
+
+Pushing images from the host goes to `127.0.0.1:5000`, because `*.localhost` resolved to `::1` only on this host and the rootless port forward listens on IPv4. Pods pull the same image as `k3d-registry.localhost:5000/…` (verified).
+
+## D-010 k3d, kubectl and helm are pinned and installed into the repo (P0)
+
+`make tools` downloads k3d 5.9.0, kubectl 1.36.5 and helm 4.3.0 into `.tools/bin` (gitignored) and checks each against a SHA-256 in `versions.env`. Checksums are pinned for linux and darwin, amd64 and arm64. Scripts put `.tools/bin` first on `PATH`, so a fresh clone needs only the container runtime, uv, jq, make and curl, and nothing is installed system-wide. Helm 4 is the current major version, and the charts pinned in D-003 are Helm 3 charts, which Helm 4 still installs; P1 confirms that for each chart. The demo uses its own kubeconfig, `.kube/config`, so `~/.kube/config` is never touched.
+
+## D-011 Host ports are overridable (P0)
+
+The spec fixes ports 8080 (gateway), 3000 (Grafana) and 8090 (control panel). On this host, port 3000 is already used by another pod. Those remain the defaults, and `HOST_PORT_GATEWAY`, `HOST_PORT_GRAFANA` and `HOST_PORT_PANEL` override them. `prereqs.sh` checks the ports and names the container holding one. The NodePorts inside the cluster (30080, 30300, 30090) don't change.
