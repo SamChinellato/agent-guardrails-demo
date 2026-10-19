@@ -1,0 +1,8 @@
+.secrets/
+evidence/*
+!evidence/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.cache/
+.prefetch/
