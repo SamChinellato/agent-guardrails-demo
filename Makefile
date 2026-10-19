@@ -23,7 +23,7 @@ define not_yet
 	@echo "make $@: not implemented yet (phase $(1)). See docs/REQUIREMENTS_STATUS.md." >&2; exit 2
 endef
 
-.PHONY: help tools prereqs prefetch up down reset status demo demo-all trip kill-reset \
+.PHONY: help tools admin-ui prereqs prefetch up down reset status demo demo-all trip kill-reset \
         policy-set evidence evidence-verify test clean-room logs pin-check
 
 help: ## List targets
@@ -79,6 +79,9 @@ test: ## Run the acceptance suite in mock mode
 
 clean-room: ## Double clean rebuild proof (P7)
 	$(call not_yet,P7)
+
+admin-ui: ## Open the APISIX admin UI on localhost:9180/ui via port-forward (read-only key shown)
+	@scripts/admin-ui.sh
 
 logs: ## Tail one service's logs: make logs SVC=apisix|etcd|mock-llm|...
 	@scripts/logs.sh "$(SVC)"

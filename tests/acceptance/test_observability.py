@@ -2,17 +2,16 @@
 the gateway shows up as a trace in Tempo, linked logs in Loki and metrics in Prometheus,
 all within 15 s (OBS-06)."""
 
-import os
 import secrets
 import time
 
 import httpx
 import pytest
 
-from conftest import poll, secret
+from conftest import poll, secret, setting
 
 FRESHNESS_S = 15  # OBS-06
-GRAFANA = f"http://127.0.0.1:{os.environ.get('HOST_PORT_GRAFANA') or '3000'}"
+GRAFANA = f"http://127.0.0.1:{setting('HOST_PORT_GRAFANA', '3000')}"
 MARKER = "obs-marker-" + secrets.token_hex(4)  # request content that must never be logged
 
 

@@ -11,10 +11,24 @@ import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _env_local() -> dict[str, str]:
+    """Machine-local overrides from .env.local (same rules as scripts/lib.sh)."""
+    path = ROOT / ".env.local"
+    if not path.exists():
+        return {}
+    pairs = (line.split("=", 1) for line in path.read_text().splitlines() if re.match(r"^[A-Z_][A-Z0-9_]*=", line))
+    return {k: v.strip() for k, v in pairs}
+
+
+def setting(name: str, default: str) -> str:
+    return os.environ.get(name) or _env_local().get(name) or default
+
 SECRETS = ROOT / ".secrets"
 KUBECONFIG = os.environ.get("KUBECONFIG_DEMO") or str(ROOT / ".kube" / "config")
 KUBECTL = str(ROOT / ".tools" / "bin" / "kubectl") if (ROOT / ".tools/bin/kubectl").exists() else "kubectl"
-GATEWAY = f"http://127.0.0.1:{os.environ.get('HOST_PORT_GATEWAY') or '8080'}"
+GATEWAY = f"http://127.0.0.1:{setting('HOST_PORT_GATEWAY', '8080')}"
 
 
 def secret(name: str) -> str:

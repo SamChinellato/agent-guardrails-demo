@@ -237,3 +237,9 @@ At the operator's request, each dashboard tells one story with a handful of pane
 | Incident | Kill switches on · Alerts firing · Guard blocks; Kill-switch state timeline; Cut off by the kill switch |
 
 Guard blocks and kill-switch events appear as annotations on every dashboard.
+
+## D-025 APISIX admin UI via `make admin-ui` (P2)
+
+At the operator's request, APISIX's built-in admin UI (`enable_admin_ui: true`, served at `/ui/` on the Admin API port) is available, without breaking rule 6. `make admin-ui` opens a deliberate `kubectl port-forward` on `127.0.0.1:9180` and points to the **viewer** key in `.secrets/`, which can read every object but can't change any (verified: a viewer PUT is refused). The admin key is there too for deliberate edits, which the next `bootstrap-gateway.sh` reports as drift. The UI isn't reachable from the LAN or from the k3d port mappings (verified). To use it from another machine, SSH-tunnel port 9180.
+
+Machine-local settings, such as `HOST_PORT_GRAFANA=3001` on this host, live in a gitignored `.env.local`. `scripts/lib.sh` and the test suite both read it, and values already in the environment take precedence.

@@ -8,3 +8,4 @@ __pycache__/
 .prefetch/
 .tools/
 .kube/
+.env.local

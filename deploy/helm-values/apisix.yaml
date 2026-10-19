@@ -41,7 +41,7 @@ apisix:
 
   admin:
     enabled: true
-    enable_admin_ui: false
+    enable_admin_ui: true       # /ui on the admin port; reached only via make admin-ui (D-025)
     type: ClusterIP
     port: 9180
     servicePort: 9180

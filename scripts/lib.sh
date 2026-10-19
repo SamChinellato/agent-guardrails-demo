@@ -6,6 +6,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../versions.env
 source "$ROOT/versions.env"
 
+# Per-machine overrides (gitignored), e.g. HOST_PORT_GRAFANA=3001 when 3000 is taken.
+# Values already set in the environment win.
+if [[ -f "$ROOT/.env.local" ]]; then
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^[A-Z_][A-Z0-9_]*$ && -z "${!k:-}" ]] && export "$k=$v"
+  done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$ROOT/.env.local")
+fi
+
 export PATH="$ROOT/.tools/bin:$PATH"
 # Keep the demo's kubeconfig out of ~/.kube/config
 export KUBECONFIG="${KUBECONFIG_DEMO:-$ROOT/.kube/config}"
