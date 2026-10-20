@@ -574,3 +574,12 @@ Played end to end in a browser:
 - **The store is an `emptyDir`.** **New chat** empties it, and so does a pod restart.
 - **Not scanned on upload, on purpose.** The control under demonstration is the one that already protects every document: the guard scans what the documents tool returns when an agent reads it, and withholds poisoned content. The document listing shows only the title, status and performance lines, so hidden text can't reach the agent that way either.
 - **Samples** at `/console/samples/`, linked from the empty chat: `harbor-view-packaging.md` is clean; `northstar-freight.md` hides an exfiltration instruction in a Markdown comment. Verified: read through the gateway as the researcher, Northstar comes back quarantined and Harbor View in full.
+
+## D-048: The architecture diagram names the platform pieces
+
+The diagram now shows:
+- this machine, with the local language model on the host and the Kubernetes cluster beside it
+- the guard opened up into its policy engine and the ML injection classifier that runs inside it
+- the observability stack by name: telemetry collector, Tempo (traces), Loki (logs and decision records), Prometheus (metrics and alerts) and Grafana (dashboards and the decision trail)
+
+The gateway and the models are still described by what they do (D-045).
