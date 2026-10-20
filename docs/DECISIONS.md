@@ -584,8 +584,12 @@ The diagram now shows:
 
 The gateway and the models are still described by what they do (D-045).
 
-## D-049: "How it works" is a page you can click through
+## D-049: "How it works" is a page you can click through (superseded by D-050)
 
 - **The page.** `/console/architecture` draws the architecture as nested boxes: this machine (the LLM API on the host), the Kubernetes cluster, the AI gateway (gateway, guard with its policy engine and ML classifier, kill switch), agents, tools and observability. Clicking a part explains it in a side panel, with what it does in the demo. The console's **How it works** link opens it.
 - **Names only.** Components and groups are labelled by name only, here and in the generated PNG. Explanations live in the panel and the script.
 - **The PNG stays.** `make diagram` still writes it, for documents and slides.
+
+## D-050: "How it works" is the generated diagram again (supersedes D-049)
+
+At the operator's request, the clickable architecture page is gone. The console's **How it works** link opens the `diagrams` PNG at `/console/architecture.png`, and the diagram's labels again say what each part does, as in D-048.

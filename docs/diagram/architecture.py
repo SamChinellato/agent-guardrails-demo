@@ -29,35 +29,35 @@ k8s = {"bgcolor": "#eaf0fb", "fontsize": "16", "pencolor": "#326ce5"}
 
 with Diagram("", filename="/out/architecture", show=False,
              direction="LR", outformat="png", graph_attr=graph, node_attr=node, edge_attr=edge):
-    analyst = User("You")
+    analyst = User("Procurement analyst\n(you)")
 
     with Cluster("This machine", graph_attr=host):
-        llm = Rack("LLM API")
+        llm = Rack("LLM API\nlocal language model\n(runs on the host)")
 
         with Cluster("Kubernetes cluster", graph_attr=k8s):
             console = Client("Chat console")
 
-            with Cluster("AI gateway"):
-                gateway = Router("Gateway")
+            with Cluster("AI gateway: every call passes here"):
+                gateway = Router("Gateway\nidentity · prompt filters\nLLM proxy · tool routing")
                 with Cluster("Guard"):
-                    guard = Decision("Policy engine")
-                    classifier = PredefinedProcess("ML injection classifier")
-                killswitch = Firewall("Kill switch")
+                    guard = Decision("Policy engine\ntool allowlists\nargument rules")
+                    classifier = PredefinedProcess("ML injection classifier\nruns inside the guard, on CPU\nscores text 0 to 1")
+                killswitch = Firewall("Kill switch\n+ control panel")
 
-            with Cluster("Agents"):
-                researcher = Server("Researcher agent")
-                executor = Server("Executor agent")
+            with Cluster("Agents (can only reach the gateway)"):
+                researcher = Server("Researcher agent\nreviews supplier documents")
+                executor = Server("Executor agent\nupdates records, sends email")
 
-            with Cluster("Tools"):
-                docs = MultipleDocuments("Documents tool")
-                actions = Document("Actions tool")
+            with Cluster("Tools (reached only through the guard)"):
+                docs = MultipleDocuments("MCP tool\nsupplier documents")
+                actions = Document("MCP tool\nrecords, email, export")
 
             with Cluster("Observability"):
-                collector = Storage("Collector")
-                tempo = Tempo("Tempo")
-                loki = Loki("Loki")
-                prometheus = Prometheus("Prometheus")
-                grafana = Grafana("Grafana")
+                collector = Storage("Telemetry collector")
+                tempo = Tempo("Tempo\ntraces")
+                loki = Loki("Loki\nlogs · decision records")
+                prometheus = Prometheus("Prometheus\nmetrics · alerts")
+                grafana = Grafana("Grafana\ndashboards · decision trail")
 
     analyst >> Edge(label="chat", **REQUEST) >> console >> Edge(label="as demo-user", **REQUEST) >> gateway
     gateway >> Edge(label="every call checked", **REQUEST) >> guard

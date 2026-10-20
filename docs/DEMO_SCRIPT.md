@@ -15,7 +15,7 @@
 | Screen | Address | Use |
 | --- | --- | --- |
 | Console | `http://<host>:8080/console` | The audience watches this |
-| Architecture | `http://<host>:8080/console/architecture` | Opening slide: click any part to explain it (also the **How it works** link in the console). A static image is at `/console/architecture.png` |
+| Architecture | `http://<host>:8080/console/architecture.png` | Opening slide (also the **How it works** link in the console) |
 | Grafana | `http://<host>:3001` | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
 | Kill switch | `http://<host>:8090` | Token: `cat .secrets/killswitch-operator-token` |
 | Prometheus | `http://<host>:9090/alerts` | Optional for beat 5: watch the alert go pending, then firing |
@@ -27,7 +27,7 @@ Press **New chat** in the console before you start, and turn on **Monitoring** i
 
 ## 0. The setup (architecture slide)
 
-**Show:** the architecture page. Click a part as you mention it; the panel on the right explains it.
+**Show:** the architecture diagram.
 
 **Say:** "This is Acme's procurement assistant. I'm an analyst; I chat with it here. The researcher agent reads supplier reviews; the executor acts on them. Notice that neither agent can reach anything directly: the model, the tools, even each other are all reached through the gateway. That one point is where we identify who's calling, check what they're asking for, record it, and stop it if we have to. Red lines are how we stop things; grey is what we record."
 
