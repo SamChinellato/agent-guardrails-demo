@@ -1,0 +1,34 @@
+{
+  "id": "demo-documents",
+  "name": "demo-documents",
+  "desc": "Documents uploaded from the presenter console (D-047), stored via the guard; scanned when an agent reads them",
+  "uri": "/demo/documents",
+  "methods": [
+    "POST",
+    "DELETE"
+  ],
+  "upstream_id": "guard",
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "demo-user"
+      ],
+      "rejected_code": 403
+    },
+    "proxy-rewrite": {
+      "uri": "/v1/documents"
+    },
+    "opentelemetry": {
+      "sampler": {
+        "name": "always_on"
+      }
+    },
+    "prometheus": {
+      "prefer_name": true
+    }
+  }
+}

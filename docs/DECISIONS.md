@@ -566,3 +566,11 @@ Played end to end in a browser:
   - `killswitch.trip` spans give in-request kills; alert-driven kills come from the console's own trip notes
 
   Each link carries a dot where the gateway checks it, and a red diamond where it stopped something. The console gets NetworkPolicy egress to Tempo :3200 for this.
+
+## D-047: Documents can be uploaded from the console, and are scanned when read
+
+- **Upload** in the console adds a Markdown or text file (at most 32 KB, at most 10 per chat) to the supplier document store as `upload-NN`. The console then suggests "Review the document I uploaded (upload-NN)".
+- **The path:** console → gateway route `demo-documents` (demo-user only) → guard `/v1/documents` → documents server `/uploads`. Only the guard may reach the documents server, so its NetworkPolicy is unchanged.
+- **The store is an `emptyDir`.** **New chat** empties it, and so does a pod restart.
+- **Not scanned on upload, on purpose.** The control under demonstration is the one that already protects every document: the guard scans what the documents tool returns when an agent reads it, and withholds poisoned content. The document listing shows only the title, status and performance lines, so hidden text can't reach the agent that way either.
+- **Samples** at `/console/samples/`, linked from the empty chat: `harbor-view-packaging.md` is clean; `northstar-freight.md` hides an exfiltration instruction in a Markdown comment. Verified: read through the gateway as the researcher, Northstar comes back quarantined and Harbor View in full.

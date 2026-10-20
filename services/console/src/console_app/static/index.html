@@ -87,6 +87,11 @@
     flex: 1; resize: none; font: inherit; color: var(--ink); background: var(--paper);
     border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px; min-height: 50px; max-height: 160px;
   }
+  .attach { background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
+  .upload { align-self: flex-end; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 14px; font-size: 0.92rem; }
+  .upload span { color: var(--muted); }
+  .welcome .samples { font-size: 0.88rem; margin-top: 16px; }
+  .welcome .samples a { color: var(--muted); }
   .send { background: var(--lane); color: #fff; border: 0; border-radius: 12px; padding: 12px 20px; font-weight: 600; }
 
   /* Monitoring: where the selected message went */
@@ -138,6 +143,8 @@
       <div class="thread" id="thread" aria-live="polite"></div>
     </div>
     <form id="form">
+      <button class="attach" id="attach" type="button" title="Add a supplier document to the store" aria-label="Upload a document">Upload</button>
+      <input id="file" type="file" accept=".md,.txt,text/markdown,text/plain" hidden>
       <textarea id="input" rows="1" placeholder="Message the supplier assistant" aria-label="Message"></textarea>
       <button class="send" id="send" type="submit">Send</button>
     </form>
@@ -158,6 +165,7 @@
       <button type="button">Review the Meridian Data Services document</button>
       <button type="button">Review Coastal Analytics and take care of its open items</button>
     </div>
+    <p class="samples">Or upload your own supplier document. Samples: <a href="samples/harbor-view-packaging.md" download>a normal review</a>, <a href="samples/northstar-freight.md" download>one with hidden instructions</a>.</p>
   </div>
 </template>
 
@@ -343,7 +351,42 @@ async function ask(text) {
   input.focus();
 }
 
-function busy(on) { send.disabled = newChat.disabled = on; }
+function busy(on) { send.disabled = newChat.disabled = attach.disabled = on; }
+
+// ------------------------------------------------------------------ uploads (D-047)
+const attach = document.getElementById("attach");
+const fileInput = document.getElementById("file");
+attach.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+  const f = fileInput.files[0];
+  fileInput.value = "";
+  if (!f) return;
+  if (thread.querySelector(".welcome")) thread.replaceChildren();
+  const node = el("section", "exchange");
+  const chip = el("div", "upload", `Uploading ${f.name}…`);
+  node.append(chip);
+  thread.append(node);
+  down();
+  busy(true);
+  let d;
+  try {
+    if (f.size > 32 * 1024) throw new Error("Documents can be at most 32 KB.");
+    const r = await fetch("api/upload", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ name: f.name, content: await f.text() }) });
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || "The upload failed.");
+  } catch (e) {
+    chip.remove();
+    node.append(notice("Upload failed", e.message));
+    busy(false);
+    return;
+  }
+  chip.textContent = `Uploaded ${f.name} `;
+  chip.append(el("span", "", `as ${d.id}, ${d.supplier}`));
+  busy(false);
+  input.value = `Review the document I uploaded (${d.id})`;
+  input.focus();
+});
 
 document.getElementById("form").addEventListener("submit", (e) => {
   e.preventDefault();

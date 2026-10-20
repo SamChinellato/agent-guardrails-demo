@@ -55,6 +55,14 @@ Press **New chat** in the console before you start, and turn on **Monitoring** i
 
 **Say:** "Attacks don't only come from users. This supplier document hides instructions aimed at AI assistants. The gateway scans what tools return, too, and withheld it."
 
+### 3b. Optional: your own document
+
+**Do:** click **Upload** and choose `northstar-freight.md` (download it from the link on the empty chat, or from `http://<host>:8080/console/samples/northstar-freight.md`). Send the suggested message, *Review the document I uploaded (upload-01)*.
+
+**Show:** the *A document was withheld* notice. This answer comes from the live model, so it takes about 20 s.
+
+**Say:** "Anyone can put a document in front of an assistant. This one hides an instruction in a comment you'd never see on screen. It went into the store unchecked, but the gateway checked it the moment the agent read it, and the agent never saw it."
+
 ## 4. The cascade, and why the gateway decided what it did
 
 **Type:** *Review Coastal Analytics and take care of its open items*

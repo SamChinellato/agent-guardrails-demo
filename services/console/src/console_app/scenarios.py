@@ -305,6 +305,7 @@ async def rogue_agent() -> list[dict]:
 
 async def reset_all() -> list[dict]:
     released = await preconditions()
+    await client.delete(f"{GATEWAY}/demo/documents", headers={"apikey": KEYS["demo-user"]})
     text = "Everything reset: kill switches open, policy back to enforce" + (
         f" (released {', '.join(LABEL.get(s, s) for s in released)})" if released else "")
     return [{"kind": "lane", "tone": "ok", "text": text}]

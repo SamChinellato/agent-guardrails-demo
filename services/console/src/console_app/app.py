@@ -36,6 +36,31 @@ async def architecture():
     return FileResponse(Path(__file__).parent / "static" / "architecture.png", media_type="image/png")
 
 
+@app.get("/samples/{name}", include_in_schema=False)
+async def sample(name: str):
+    """Example documents to upload (D-047): one clean, one poisoned."""
+    from fastapi.responses import FileResponse, PlainTextResponse
+
+    path = Path(__file__).parent / "static" / "samples" / Path(name).name
+    if not path.is_file():
+        return PlainTextResponse("not found", 404)
+    return FileResponse(path, media_type="text/markdown", filename=path.name)
+
+
+@app.post("/api/upload")
+async def upload(request: Request) -> JSONResponse:
+    """Add a document to the supplier store, through the gateway (D-047)."""
+    body = await request.json()
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{GATEWAY}/demo/documents", headers={"apikey": KEY},
+                              json={"name": body.get("name"), "content": body.get("content")})
+    try:
+        data = r.json()
+    except ValueError:
+        data = {"error": f"the gateway answered {r.status_code}"}
+    return JSONResponse(data, r.status_code if r.status_code < 500 else 502)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def page() -> HTMLResponse:
     return HTMLResponse(PAGE.replace("{{GRAFANA_PORT}}", GRAFANA_PORT))

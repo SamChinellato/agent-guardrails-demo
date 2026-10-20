@@ -34,6 +34,7 @@ spec:
           image: ${MCP_DOCS_IMAGE}
           env:
             - {name: DOCS_DIR, value: /fixtures/documents}
+            - {name: UPLOADS_DIR, value: /uploads}
             - {name: MCP_ALLOWED_HOSTS, value: "mcp-docs.ai.svc.cluster.local:8000,mcp-docs.ai.svc:8000,mcp-docs:8000"}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
           ports:
@@ -53,9 +54,13 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: documents, mountPath: /fixtures/documents, readOnly: true}
+            - {name: uploads, mountPath: /uploads}
       volumes:
         - name: documents
           configMap: {name: fixtures-documents}
+        # documents uploaded from the console (D-047); gone when the pod restarts
+        - name: uploads
+          emptyDir: {sizeLimit: 1Mi}
 ---
 apiVersion: v1
 kind: Service

@@ -115,6 +115,21 @@ async def mcp(server: str, request: Request) -> Response:
         return await state["proxy"].handle(server, request)
 
 
+@app.api_route("/v1/documents", methods=["POST", "DELETE"])
+async def documents(request: Request) -> Response:
+    """Console uploads (D-047), passed to the documents server, which only the guard may reach.
+    Not scanned here: the guard scans every document when an agent reads it."""
+    import httpx
+
+    from guard.mcp_proxy import UPSTREAMS
+
+    url = UPSTREAMS["docs"].rsplit("/mcp", 1)[0] + "/uploads"
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.request(request.method, url, content=await request.body(),
+                                 headers={"content-type": "application/json"})
+    return Response(r.content, status_code=r.status_code, media_type="application/json")
+
+
 @app.post("/v1/autotrip/reset")
 async def autotrip_reset() -> JSONResponse:
     """Clear auto-trip de-duplication (make reset). Not routed by APISIX; reached only by
