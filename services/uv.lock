@@ -171,10 +171,14 @@ version = "0.1.0"
 source = { editable = "console" }
 dependencies = [
     { name = "demo-common" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "demo-common", editable = "common" }]
+requires-dist = [
+    { name = "demo-common", editable = "common" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+]
 
 [[package]]
 name = "cryptography"

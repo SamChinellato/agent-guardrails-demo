@@ -124,7 +124,8 @@ def test_tokens_are_scoped(ks):
     guard_reset = ks("killswitch-guard-token").post("/v1/reset", json={"scope": "agent:executor", "reason": "x"})
     assert guard_reset.status_code == 403
     assert trip(ks, "agent:executor", token="killswitch-alertmanager-token").status_code == 403
-    assert ks("killswitch-guard-token").get("/v1/status").status_code == 401
+    assert ks("killswitch-guard-token").get("/v1/status").status_code == 200  # read-only, for auto-trip dedupe
+    assert ks("killswitch-alertmanager-token").get("/v1/status").status_code == 401
 
 
 # ---------------------------------------------------------------- KS-03 / KS-04 / KS-12 / KS-07

@@ -110,6 +110,7 @@ apply_cm ai fixtures-records "$ROOT/scenarios/fixtures/records.json"
 # The live policy may differ from git after `make policy-set`; only seed it if missing
 # (`make reset` restores it from policy/policy.yaml).
 kubectl -n ai get configmap guard-policy >/dev/null 2>&1 || apply_cm ai guard-policy "$ROOT/policy/policy.yaml"
+apply_cm ai guard-policy-baseline "$ROOT/policy/policy.yaml"   # what the console restores (D-043)
 for m in 30-mock-llm 20-guard 21-mcp-servers 22-agents; do render_manifest "$ROOT/deploy/manifests/$m.yaml" | kubectl apply -f - >/dev/null; done
 for d in mock-llm mcp-docs mcp-actions guard researcher executor console; do kubectl -n ai rollout status "deployment/$d" --timeout=300s >/dev/null; done
 
@@ -119,7 +120,9 @@ case "$CONTAINER_RUNTIME" in
   *) ip="$(kubectl -n kube-system get configmap coredns -o jsonpath='{.data.NodeHosts}' | awk '$2=="host.k3d.internal"{print $1}')"
      ollama_egress="${ip:-192.0.2.1}/32" ;;   # 192.0.2.1: TEST-NET, matches nothing
 esac
-sed "s|\${OLLAMA_EGRESS}|$ollama_egress|" "$ROOT/deploy/manifests/50-networkpolicies.yaml" | kubectl apply -f - >/dev/null
+apiserver="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')/32"
+sed -e "s|\${OLLAMA_EGRESS}|$ollama_egress|" -e "s|\${APISERVER_EGRESS}|$apiserver|" \
+  "$ROOT/deploy/manifests/50-networkpolicies.yaml" | kubectl apply -f - >/dev/null
 "$ROOT/scripts/verify-netpol.sh"
 
 log "apisix"

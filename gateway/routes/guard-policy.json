@@ -1,0 +1,33 @@
+{
+  "id": "guard-policy",
+  "name": "guard-policy",
+  "desc": "Read-only view of the guard's live policy and version, for the presenter console",
+  "uri": "/demo/guard-policy",
+  "methods": [
+    "GET"
+  ],
+  "upstream_id": "guard",
+  "plugins": {
+    "key-auth": {
+      "hide_credentials": true
+    },
+    "consumer-restriction": {
+      "type": "consumer_name",
+      "whitelist": [
+        "demo-user"
+      ],
+      "rejected_code": 403
+    },
+    "proxy-rewrite": {
+      "uri": "/v1/policy"
+    },
+    "opentelemetry": {
+      "sampler": {
+        "name": "always_on"
+      }
+    },
+    "prometheus": {
+      "prefer_name": true
+    }
+  }
+}

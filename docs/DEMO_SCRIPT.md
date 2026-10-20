@@ -15,7 +15,7 @@ One story in five beats, about 15 minutes: **an AI gateway that sees everything 
 
 Run `make reset` before you start, and between rehearsals. It takes a few seconds and leaves every switch open, the policy restored and the outbox empty. `make status` shows the state at a glance.
 
-Scenario commands run a **script**, so they behave the same way every time. The console's chat uses the real model on this machine and takes about 20–30 s per answer.
+Everything starts from the **console**: type in the chat for beats 1 and 2, and use the scenario picker (**Run**) for beats 3–5. **Reset** clears everything between runs. Scenarios run a script, so they behave the same way every time. Chat uses the real model on this machine and takes about 20–30 s per answer. The terminal commands (`make demo SCENARIO=…`) do the same things if you prefer a terminal.
 
 ---
 
@@ -39,7 +39,7 @@ Scenario commands run a **script**, so they behave the same way every time. The 
 
 **Say:** "Attacks don't only come from users. One supplier document hides instructions for AI assistants."
 
-**Do:** `make demo SCENARIO=s2`
+**Do:** pick **Poisoned document**, then Run.
 
 **Show:** the Meridian document comes back *withheld by the gateway*, and the review carries on without it.
 
@@ -47,7 +47,7 @@ Scenario commands run a **script**, so they behave the same way every time. The 
 
 **Say:** "Now suppose document scanning is only watching, not blocking. The poison reaches the researcher, which hands it on to the executor as an ordinary-looking task."
 
-**Do:** `make demo SCENARIO=s3`
+**Do:** pick **Cascade between agents**, then Run.
 
 **Show:**
 - The executor tries to **export customer data** and **email it to an outside address**. The gateway denies the export, and the guard **trips the executor's kill switch** before the email can even be tried.
@@ -59,7 +59,7 @@ Scenario commands run a **script**, so they behave the same way every time. The 
 
 **Say:** "Last one: nothing malicious, just an agent that's gone off the rails."
 
-**Do:** run `make reset`, then click **Make the agent go rogue** in the console.
+**Do:** pick **Rogue agent**, then Run.
 
 **Show:**
 - On Agent Behaviour, tool calls and tokens climb steeply.
@@ -74,13 +74,13 @@ Scenario commands run a **script**, so they behave the same way every time. The 
 
 | Command | What it shows |
 | --- | --- |
-| `make demo SCENARIO=s4` | Repeated injection attempts trip an agent through an alert; the other agent carries on |
-| `make demo SCENARIO=s5` | Operator pulls the global switch mid-task; everything stops; a confirmed reset restores it |
+| Console: **Repeated attacks** | Repeated injection attempts trip an agent through an alert; the other agent carries on |
+| Console: **Global kill switch** | Operator pulls the global switch mid-task; everything stops; a reset restores it |
 | Kill-switch panel | Trip or reset any switch live: pick *Everything*, give a reason, Trip. Reset needs **RESET GLOBAL** |
 | `make admin-ui` | APISIX's own dashboard at `localhost:9180/ui/`, read-only key in `.secrets/apisix-viewer-key` |
 
 ## If something goes off script
 
-- **An agent is stuck as Tripped:** reset it on the panel, or run `make reset`.
+- **An agent is stuck as Tripped:** press **Reset** in the console, or use the panel.
 - **A live chat answer is wordy or wrong:** the model varies, but the gateway behaviour doesn't. Ask again, or move on to the scripted beats.
 - **Nothing responds:** run `make status`. If a pod isn't ready, `make up` repairs it without losing anything.

@@ -142,9 +142,10 @@ spec:
     matchLabels: {app: killswitch}
   policyTypes: [Ingress, Egress]
   ingress:
-    # Guard auto-trip (F5), Alertmanager webhook (F6), Prometheus scrape
+    # Guard auto-trip (F5), presenter console (D-043), Alertmanager webhook (F6), Prometheus scrape
     - from:
         - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ai}}, podSelector: {matchLabels: {app: guard}}}
+        - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ai}}, podSelector: {matchLabels: {app: console}}}
         - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}
       ports: [{port: 8000, protocol: TCP}]
     # Control panel through the host NodePort (KS-08)
@@ -156,3 +157,20 @@ spec:
       ports: [{port: 9180, protocol: TCP}, {port: 9080, protocol: TCP}]
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}}]
       ports: [{port: 4318, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: console-control, namespace: ai}
+spec:
+  # Presenter controls (D-043): the killswitch, Prometheus alerts and the Kubernetes API
+  # (guard-policy ConfigMap, enforced by RBAC). ${APISERVER_EGRESS} is the node address.
+  podSelector:
+    matchLabels: {app: console}
+  policyTypes: [Egress]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app: killswitch}}}]
+      ports: [{port: 8000, protocol: TCP}]
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}, podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}}]
+      ports: [{port: 9090, protocol: TCP}]
+    - to: [{ipBlock: {cidr: "${APISERVER_EGRESS}"}}]
+      ports: [{port: 6443, protocol: TCP}]

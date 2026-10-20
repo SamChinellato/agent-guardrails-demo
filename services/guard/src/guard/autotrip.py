@@ -38,11 +38,24 @@ class AutoTrip:
         dedupe = float(conf.get("dedupe_seconds", 60))
         now = time.monotonic()
         with self._lock:
-            if now - self._last.get(scope, -1e9) < dedupe:
-                log.info("auto-trip suppressed (dedupe)", extra={"scope": scope, "decision_id": d.decision_id})
-                return
+            recent = now - self._last.get(scope, -1e9) < dedupe
+        # Inside the dedupe window, only skip if the scope really is still tripped: after an
+        # operator's reset the next critical violation must trip again (D-043).
+        if recent and self._engaged(scope):
+            log.info("auto-trip suppressed (dedupe)", extra={"scope": scope, "decision_id": d.decision_id})
+            return
+        with self._lock:
             self._last[scope] = now
         self._trip(scope, d, otel_context.get_current())
+
+    def _engaged(self, scope: str) -> bool:
+        if not self.url:
+            return True
+        try:
+            r = httpx.get(f"{self.url}/v1/status", headers={"Authorization": f"Bearer {self.token}"}, timeout=2)
+            return bool(r.json()["scopes"].get(scope))
+        except Exception:  # noqa: BLE001 - if unsure, keep de-duplicating
+            return True
 
     def clear(self) -> None:
         """Forget de-duplication state (make reset), so the next run trips again."""

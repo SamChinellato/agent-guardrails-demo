@@ -476,3 +476,30 @@ At the operator's request, the secondary UIs are reachable on the LAN like the m
 | Evidence viewer | 8099 | 30899 | Read-only `http.server` in the pinned Python base image |
 
 The evidence viewer serves the host's `evidence/` folder, mounted into the k3d node, so new bundles appear immediately. All ports follow `HOST_BIND` and can be overridden with `HOST_PORT_*`. The APISIX dashboard stays local-only through `make admin-ui` (rule 6). This change required re-creating the cluster once, for the new port mappings and volume.
+
+## D-043 Scenarios start from the console (demo prep)
+
+At the operator's request, every scenario except typed attacks (S1, which the presenter types) starts from the console. A picker in the header with **Run** and **Reset** offers:
+- Poisoned document (S2)
+- Cascade (S3)
+- Repeated attacks (S4)
+- Global kill switch (S5)
+- Rogue agent (S6)
+
+**How it works.** The console backend (`console_app/scenarios.py`) does what the CLI runner does:
+1. Opens every kill switch.
+2. Sets the scenario's policy modes by patching the `guard-policy` ConfigMap, then waits until the guard serves that version, read through a read-only gateway route, `/demo/guard-policy`.
+3. Drives the gateway as `demo-user`; S4 sends its attempts as `researcher`.
+4. Collects the kill-switch events and returns them as steps. The page draws gateway actions as notes on the lane itself.
+
+**What the console was granted:**
+- A service account whose Role allows only `get` and `patch` on `configmaps/guard-policy`.
+- NetworkPolicy egress to the killswitch, Prometheus and the Kubernetes API (the node address on 6443). The killswitch accepts ingress from the console.
+- The operator token (Secret `ai/killswitch-operator`), and the researcher and executor keys.
+- **Deliberately no access to the guard.** The guard trusts `X-Agent-Id` and must stay reachable only through APISIX.
+
+**Auto-trip de-duplication** now asks the killswitch whether the scope is still tripped (the guard token may read `/v1/status`). Inside the 60 s window, a trip is skipped only if the agent is still stopped, so a scenario that follows a reset trips again without a reset hook on the guard.
+
+**Alert waits.** A scenario waits only for the alerts it relies on (S4: `GuardBlockSpike`; S6: `AgentToolCallSpike`, `TokenBurn`). Other alerts that are still firing are harmless, because they began before the scenario's reset. That removed a 111 s wait when the rogue agent followed repeated attacks.
+
+**Trade-off, by the operator's choice.** The console has no login for now. Anyone on the LAN who can open it can run scenarios, which includes opening every kill switch and switching document scanning to monitor mode. The kill-switch panel still needs the operator token.

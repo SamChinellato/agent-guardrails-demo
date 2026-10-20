@@ -162,7 +162,7 @@ def run_attacks(s: dict) -> None:
 
 def run_alert_attacks(s: dict) -> None:
     """S4: an agent keeps sending injection attempts; the GuardBlockSpike alert trips it."""
-    ops.wait_alerts_clear(note)
+    ops.wait_alerts_clear(note, names=("GuardBlockSpike",))
     ops.preconditions(s.get("policy") or {}, note)
     attacks = yaml.safe_load((ROOT / "scenarios" / s["attacks"]).read_text())["subtle"][: s["count"]]
     agent = s["as"]
@@ -216,7 +216,7 @@ def run_manual_kill(s: dict, scripted: bool) -> None:
 
 def run_rogue(s: dict) -> None:
     """S6 / DEMO-03: a runaway agent is stopped by the anomaly alerts."""
-    ops.wait_alerts_clear(note)
+    ops.wait_alerts_clear(note, names=("AgentToolCallSpike", "TokenBurn"))
     ops.preconditions(s.get("policy") or {}, note)
     req = s["request"]
     since = time.time()

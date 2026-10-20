@@ -13,6 +13,7 @@ import httpx
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from console_app import scenarios
 from demo_common import create_app, get_logger, run
 
 log = get_logger("console")
@@ -61,6 +62,26 @@ async def chat(request: Request) -> JSONResponse:
         return JSONResponse({"kind": "halted", "incident_id": err.get("incident_id")})
     log.warning("unexpected gateway answer", extra={"status": r.status_code})
     return JSONResponse({"kind": "error", "message": f"The gateway answered {r.status_code}."})
+
+
+@app.get("/api/scenarios")
+async def scenario_list() -> JSONResponse:
+    return JSONResponse([{"id": k, "title": t} for k, (t, _) in scenarios.SCENARIOS.items() if k != "reset"])
+
+
+@app.post("/api/scenario")
+async def scenario(request: Request) -> JSONResponse:
+    """Run one scenario end to end and return the steps to draw (D-043)."""
+    sid = (await request.json()).get("id", "")
+    if sid not in scenarios.SCENARIOS:
+        return JSONResponse({"error": f"unknown scenario {sid!r}"}, 400)
+    title, fn = scenarios.SCENARIOS[sid]
+    try:
+        steps = await fn()
+    except Exception as e:  # noqa: BLE001 - show the presenter what went wrong, don't crash the page
+        log.exception("scenario failed", extra={"scenario": sid})
+        steps = [{"kind": "lane", "tone": "stop", "text": f"The scenario could not run: {e}"}]
+    return JSONResponse({"id": sid, "title": title, "steps": steps})
 
 
 def main() -> None:

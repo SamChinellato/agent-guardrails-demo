@@ -127,6 +127,26 @@ spec:
         - name: tmp
           emptyDir: {}
 ---
+# The console starts scenarios (D-043): it may read and patch only the guard-policy ConfigMap
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: console, namespace: ai}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: console-guard-policy, namespace: ai}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [guard-policy]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: console-guard-policy, namespace: ai}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: console-guard-policy}
+subjects: [{kind: ServiceAccount, name: console, namespace: ai}]
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -152,7 +172,8 @@ spec:
     metadata:
       labels: {app: console}
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: console
+      automountServiceAccountToken: true   # Kubernetes API, guard-policy ConfigMap only
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -164,6 +185,15 @@ spec:
             - {name: GATEWAY_URL, value: "http://apisix-gateway.gateway.svc.cluster.local"}
             - name: DEMO_USER_KEY
               valueFrom: {secretKeyRef: {name: agent-keys, key: demo-user}}
+            - name: RESEARCHER_KEY        # S4 sends attempts as the researcher
+              valueFrom: {secretKeyRef: {name: agent-keys, key: researcher}}
+            - name: EXECUTOR_KEY
+              valueFrom: {secretKeyRef: {name: agent-keys, key: executor}}
+            - name: KILLSWITCH_TOKEN      # presenter controls; the console has no login (D-043)
+              valueFrom: {secretKeyRef: {name: killswitch-operator, key: token}}
+            - {name: KILLSWITCH_URL, value: "http://killswitch.gateway.svc.cluster.local:8000"}
+            - {name: PROMETHEUS_URL, value: "http://kps-prometheus.observability.svc.cluster.local:9090"}
+            - {name: POLICY_BASELINE, value: /policy-baseline/policy.yaml}
             - {name: GRAFANA_PORT, value: "${HOST_PORT_GRAFANA}"}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
           ports:
@@ -181,3 +211,8 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: policy-baseline, mountPath: /policy-baseline, readOnly: true}
+      volumes:
+        - name: policy-baseline
+          configMap: {name: guard-policy-baseline}

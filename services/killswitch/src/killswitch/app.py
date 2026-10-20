@@ -8,7 +8,7 @@
   POST /v1/rotate        archive the audit log (make reset)
   GET  /                 control panel (operator token, set once as a cookie)
 
-Tokens (KS-09): operator -> everything; guard -> trip agent:* only; alertmanager -> webhook only.
+Tokens (KS-09): operator -> everything; guard -> trip agent:* and read status; alertmanager -> webhook only.
 """
 
 import hmac
@@ -109,8 +109,8 @@ async def reset(request: Request) -> JSONResponse:
 
 @app.get("/v1/status")
 async def status(request: Request) -> JSONResponse:
-    if caller(request) != "operator":
-        return deny(401, "operator token required")
+    if caller(request) not in ("operator", "guard"):  # the guard reads it for auto-trip dedupe
+        return deny(401, "operator or guard token required")
     return JSONResponse(ks.status())
 
 

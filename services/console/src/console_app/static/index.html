@@ -44,12 +44,21 @@
     font: inherit; border-radius: 10px; cursor: pointer;
   }
   button:focus-visible, textarea:focus-visible { outline: 3px solid var(--lane); outline-offset: 2px; }
-  .rogue {
-    background: transparent; color: var(--stop); border: 1.5px solid var(--stop);
-    padding: 8px 16px; font-size: 0.95rem; font-weight: 600;
-  }
-  .rogue:hover { background: var(--stop-soft); }
-  .rogue:disabled, .send:disabled { opacity: 0.45; cursor: default; }
+  .controls { display: flex; gap: 8px; align-items: center; }
+  .controls select { font: inherit; font-size: 0.95rem; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 10px; padding: 8px 10px; }
+  .run, .reset { padding: 8px 16px; font-size: 0.95rem; font-weight: 600; }
+  .run { background: var(--lane); color: #fff; border: 0; }
+  .reset { background: transparent; color: var(--muted); border: 1px solid var(--rule); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  /* scenario title and gateway notes span the board, centred on the lane */
+  .banner { grid-column: 1 / -1; text-align: center; color: var(--muted); font-weight: 600; padding: 18px 0 4px; }
+  .note-row { grid-column: 1 / -1; display: flex; justify-content: center; padding: 8px 0; }
+  .lane-note { max-width: 40rem; text-align: center; border-radius: 999px; padding: 6px 16px; font-size: 0.92rem;
+    background: var(--paper); border: 1px solid var(--rule); color: var(--muted); }
+  .lane-note.stop { background: var(--stop-soft); border-color: var(--stop); color: var(--stop); font-weight: 600; }
+  .lane-note.ok { border-color: var(--pass); color: var(--pass); font-weight: 600; }
+  .who { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
 
   /* The conversation: you | gateway lane | agent */
   .board {
@@ -114,7 +123,11 @@
 <body>
 <header>
   <h1>Supplier assistant</h1>
-  <button class="rogue" id="rogue" type="button">Make the agent go rogue</button>
+  <div class="controls">
+    <select id="scenario" aria-label="Scenario"></select>
+    <button class="run" id="run" type="button">Run</button>
+    <button class="reset" id="reset" type="button">Reset</button>
+  </div>
 </header>
 
 <main class="board" id="board" aria-live="polite">
@@ -131,10 +144,18 @@
 const board = document.getElementById("board");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
-const rogueBtn = document.getElementById("rogue");
+const runBtn = document.getElementById("run");
+const resetBtn = document.getElementById("reset");
+const picker = document.getElementById("scenario");
 const history = [];   // only messages that reached the agent
 const GRAFANA = `${location.protocol}//${location.hostname}:{{GRAFANA_PORT}}`;
 
+// what an agent tried to do, for blocked or withheld calls
+const TOOL_ATTEMPT = {
+  docs__list_documents: "list documents", docs__read_document: "read a document",
+  actions__update_record: "update a record", actions__send_email: "send an email",
+  actions__export_customer_data: "export customer data", handoff_to_executor: "hand off to the executor",
+};
 const TOOL_WORDS = {
   docs__list_documents: "listed documents", docs__read_document: "read a document",
   actions__update_record: "updated a record", actions__send_email: "sent an email",
@@ -168,7 +189,8 @@ function toolLine(events) {
   const line = el("div", "tools");
   const counts = new Map();
   for (const t of tools) {
-    const word = TOOL_WORDS[t.tool] || t.tool;
+    const blockedCall = t.outcome === "denied" || t.outcome === "quarantined";
+    const word = (blockedCall ? TOOL_ATTEMPT[t.tool] : TOOL_WORDS[t.tool]) || t.tool;
     const key = word + "|" + t.outcome;
     counts.set(key, (counts.get(key) || 0) + 1);
   }
@@ -229,7 +251,7 @@ function render(slot, data) {
 
 async function ask(text, rogue = false) {
   const slot = addRow(text);
-  send.disabled = rogueBtn.disabled = true;
+  busy(true);
   const messages = [...history, { role: "user", content: text }];
   let data;
   try {
@@ -241,7 +263,7 @@ async function ask(text, rogue = false) {
   // A blocked message never reached the agent, so it stays out of the conversation
   if (data.kind !== "blocked" && data.kind !== "error") history.push({ role: "user", content: text });
   render(slot, data);
-  send.disabled = rogueBtn.disabled = false;
+  busy(false);
   board.scrollTop = board.scrollHeight;
   input.focus();
 }
@@ -256,7 +278,81 @@ document.getElementById("form").addEventListener("submit", (e) => {
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
 });
-rogueBtn.addEventListener("click", () => ask("Review every supplier document again, as thoroughly as you can.", true));
+function busy(on) { send.disabled = runBtn.disabled = resetBtn.disabled = picker.disabled = on; }
+
+function laneNote(tone, text) {
+  const row = el("div", "note-row");
+  row.append(el("div", "lane-note " + (tone || "info"), text));
+  board.append(row);
+}
+
+function toolLines(events) {
+  // one line per agent, so the cascade reads researcher then executor
+  const byAgent = new Map();
+  for (const e of events || []) {
+    if (e.type !== "tool" && e.type !== "halted") continue;
+    const who = e.agent || "researcher";
+    if (!byAgent.has(who)) byAgent.set(who, []);
+    byAgent.get(who).push(e);
+  }
+  const wrap = el("div");
+  const multi = byAgent.size > 1;
+  for (const [who, evs] of byAgent) {
+    const line = toolLine(evs.filter(e => e.type === "tool")) || el("div", "tools");
+    if (evs.some(e => e.type === "halted")) { line.append(line.childNodes.length ? ", " : ""); line.append(el("span", "denied", "halted by the kill switch")); }
+    if (multi) line.prepend(el("strong", "", who[0].toUpperCase() + who.slice(1) + ": "));
+    wrap.append(line);
+  }
+  return wrap;
+}
+
+function renderSteps(steps) {
+  let slot = null;
+  for (const st of steps) {
+    if (st.kind === "lane") { laneNote(st.tone, st.text); slot = null; continue; }
+    if (st.kind === "user") { slot = addRow(st.text); slot.dot.classList.remove("wait"); continue; }
+    if (st.kind === "blocked") {
+      const s2 = addRow(st.text);
+      s2.you.prepend(el("div", "who", `sent by the ${st.who}`));
+      render(s2, st.status === 200 ? { kind: "error", message: "This one got through." } : { kind: "blocked", reason: st.reason, decision_id: st.decision_id });
+      continue;
+    }
+    if (st.kind === "agent") {
+      if (!slot) slot = addRow("");
+      const halted = st.status === "halted_by_kill_switch";
+      if (halted) { slot.dot.classList.add("stop"); slot.agent.append(el("div", "halt", "The gateway stopped this agent. Its kill switch is on.")); }
+      else { slot.agent.append(richText(el("div", "bubble"), st.reply || "(no reply)")); }
+      slot.agent.append(toolLines(st.events));
+      if (st.trace_id) { const f = el("div", "tools"); f.append(traceLink(st.trace_id)); slot.agent.append(f); }
+      slot = null;
+    }
+  }
+  board.scrollTop = board.scrollHeight;
+}
+
+async function runScenario(id, title) {
+  document.getElementById("empty")?.remove();
+  board.append(el("div", "banner", title));
+  const pending = el("div", "note-row"); pending.append(el("div", "lane-note", "Running…")); board.append(pending);
+  board.scrollTop = board.scrollHeight;
+  busy(true);
+  let data;
+  try {
+    const r = await fetch("api/scenario", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    data = await r.json();
+  } catch (e) {
+    data = { steps: [{ kind: "lane", tone: "stop", text: "The console could not reach its server." }] };
+  }
+  pending.remove();
+  renderSteps(data.steps || []);
+  busy(false);
+}
+
+fetch("api/scenarios").then(r => r.json()).then(list => {
+  for (const s of list) { const o = el("option", "", s.title); o.value = s.id; picker.append(o); }
+});
+runBtn.addEventListener("click", () => runScenario(picker.value, picker.options[picker.selectedIndex].text));
+resetBtn.addEventListener("click", () => runScenario("reset", "Reset"));
 input.focus();
 </script>
 </body>
