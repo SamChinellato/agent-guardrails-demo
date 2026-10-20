@@ -91,7 +91,7 @@ grafana:
     nodePort: 30300
   resources:
     requests: {cpu: 50m, memory: 128Mi}
-    limits: {cpu: 500m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1536Mi}   # a rogue run's trace in the Decision trail needs > 512Mi
   grafana.ini:
     analytics: {reporting_enabled: false, check_for_updates: false, check_for_plugin_updates: false}
     news: {news_feed_enabled: false}
