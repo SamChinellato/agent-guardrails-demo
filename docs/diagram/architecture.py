@@ -27,7 +27,7 @@ edge = {"fontname": "Helvetica", "fontsize": "12"}
 host = {"bgcolor": "#f6f7f9", "fontsize": "16"}
 k8s = {"bgcolor": "#eaf0fb", "fontsize": "16", "pencolor": "#326ce5"}
 
-with Diagram("Acme procurement assistant behind an AI gateway", filename="/out/architecture", show=False,
+with Diagram("", filename="/out/architecture", show=False,
              direction="LR", outformat="png", graph_attr=graph, node_attr=node, edge_attr=edge):
     analyst = User("Procurement analyst\n(you)")
 
