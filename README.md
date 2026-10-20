@@ -2,6 +2,8 @@
 
 Apache APISIX as an AI gateway between two cooperating agents and their LLM and MCP tools, on a local k3d cluster. It shows four things: prompt-injection attacks, observability, a kill switch, and a tamper-evident evidence bundle. The full design is in [`SPEC.md`](SPEC.md). Decisions and deviations are in [`docs/DECISIONS.md`](docs/DECISIONS.md), and progress is in [`docs/REQUIREMENTS_STATUS.md`](docs/REQUIREMENTS_STATUS.md).
 
+**How detection works:** [`docs/DETECTION.md`](docs/DETECTION.md) walks through each layer, from identity and prompt filters to tool policy and behavioural alerts, and how each one ends in the kill switch.
+
 > **Status: P6 done.** Console at `http://<host>:8080/console`, kill-switch panel at `http://<host>:8090` (token in `.secrets/killswitch-operator-token`), scenarios S0–S6 with `make demo SCENARIO=s0`…`s6-rogue`, `make trip` / `kill-reset` / `reset` / `status`, and evidence bundles with `make evidence INCIDENT=…` / `make evidence-verify DIR=…`. Grafana is at `http://<host>:3000` by default; `make up` prints the exact URLs, including the LAN ones. You can view it without logging in; to log in, click **Sign in** and use user `admin` with the password in `.secrets/grafana-admin-password`. dashboards: AI Gateway Overview, Agent Behaviour, Incident. `make tools`, `prereqs`, `prefetch`, `up`, `down`, `test`, `logs` and `pin-check` work. Other targets exit and name the phase that implements them.
 
 ## Prerequisites
