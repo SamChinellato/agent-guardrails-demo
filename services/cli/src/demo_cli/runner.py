@@ -228,9 +228,11 @@ def run_rogue(s: dict) -> None:
     show_kills(since)
 
 
-def run(sid: str, scripted_flag: bool) -> None:
+def run(sid: str, live: bool) -> None:
+    """Scenarios are scripted unless --live: the story plays out the same way every time,
+    while the console's free chat uses the real model in live mode."""
     s = find_scenario(sid)
-    scripted = scripted_flag or setting("LLM_MODE", "mock") == "mock"
+    scripted = not live
     say(f"{s['id'].upper()}  {s['title']}", BOLD)
     note(s["story"])
     ops.preconditions(s.get("policy") or {}, note)
@@ -247,7 +249,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("scenario")
-    r.add_argument("--scripted", action="store_true", help="use the mock LLM script even in live mode")
+    r.add_argument("--live", action="store_true", help="use the real model instead of the scenario's script")
     sub.add_parser("all")
     t = sub.add_parser("trip")
     t.add_argument("scope")
@@ -267,7 +269,7 @@ def main() -> None:
     a = p.parse_args()
 
     if a.cmd == "run":
-        run(a.scenario, a.scripted)
+        run(a.scenario, a.live)
     elif a.cmd == "all":
         for sid in ("s0", "s1", "s2", "s3", "s4", "s5"):
             run(sid, False)

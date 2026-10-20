@@ -100,7 +100,8 @@ def build_app(agent_id: str):
                     if m.get("role") in ("user", "assistant") and m.get("content")]
         if not messages or messages[-1]["role"] != "user":
             return JSONResponse({"error": "messages must end with a user message"}, 400)
-        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"))
+        # Chat answers questions; hand-offs belong to tasks (the console's chat stays on topic)
+        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"), local_tools=False)
         return JSONResponse(result.as_dict())
 
     return app

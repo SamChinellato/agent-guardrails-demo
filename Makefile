@@ -5,6 +5,8 @@ SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
 
+# Machine-local defaults (gitignored), e.g. LLM_MODE=live or HOST_PORT_GRAFANA=3001
+-include .env.local
 LLM_MODE ?= mock
 SCENARIO ?=
 SCOPE    ?=
@@ -15,7 +17,7 @@ INCIDENT ?=
 TRACE    ?=
 DIR      ?=
 SVC      ?=
-SCRIPTED ?=
+LIVE     ?=
 PYTEST_ARGS ?=
 
 export LLM_MODE HOST_BIND HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL CONTAINER_RUNTIME
@@ -54,9 +56,9 @@ reset: ## Clean demo state without rebuilding: kill switches, policy, outbox, au
 status: ## Pod health, kill-switch state, policy modes, firing alerts
 	@cd services && uv run --frozen --package cli demo status
 
-demo: ## Run one scenario: make demo SCENARIO=s3 [SCRIPTED=1 in live mode]
+demo: ## Run one scenario: make demo SCENARIO=s3 (scripted; LIVE=1 to use the real model)
 	@test -n "$(SCENARIO)" || { echo "usage: make demo SCENARIO=s0|s1|s2|s3|s4|s5|s6" >&2; exit 2; }
-	@cd services && uv run --frozen --package cli demo run "$(SCENARIO)" $(if $(SCRIPTED),--scripted,)
+	@cd services && uv run --frozen --package cli demo run "$(SCENARIO)" $(if $(LIVE),--live,)
 
 demo-all: ## Run S0–S5 with a reset after each
 	@cd services && uv run --frozen --package cli demo all

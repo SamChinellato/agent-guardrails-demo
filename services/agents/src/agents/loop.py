@@ -87,7 +87,8 @@ class Agent:
         prefix = "/no_think\n" if "qwen3" in self.cfg.model.lower() else ""
         return prefix + self.cfg.system_prompt
 
-    async def run(self, messages: list[dict], scenario: str, max_steps: int | None = None) -> Result:
+    async def run(self, messages: list[dict], scenario: str, max_steps: int | None = None,
+                  local_tools: bool = True) -> Result:
         task_id = "task-" + uuid.uuid4().hex[:12]
         steps = min(max_steps or self.cfg.max_steps, MAX_STEPS_CAP)
         headers = {"X-Demo-Scenario": scenario} if scenario else {}
@@ -96,14 +97,14 @@ class Agent:
             attributes={"agent.id": self.cfg.agent_id, "scenario.id": scenario or "", "task.id": task_id},
         ) as span:
             trace_id = format(span.get_span_context().trace_id, "032x")
-            result = await self._run(messages, headers, steps, task_id, trace_id, scenario)
+            result = await self._run(messages, headers, steps, task_id, trace_id, scenario, local_tools)
             span.set_attribute("agent.status", result.status)
             TASKS.labels(self.cfg.agent_id, result.status).inc()
             log.info("task finished", extra={"task_id": task_id, "status": result.status, "scenario": scenario,
                                              "events": len(result.events)})
             return result
 
-    async def _run(self, messages, headers, steps, task_id, trace_id, scenario) -> Result:
+    async def _run(self, messages, headers, steps, task_id, trace_id, scenario, local_tools=True) -> Result:
         events: list[dict] = []
         convo = [{"role": "system", "content": self._system()}, *messages]
         llm = openai.AsyncOpenAI(
@@ -116,7 +117,7 @@ class Agent:
 
         try:
             async with GatewayMcp(self.cfg.gateway, self.cfg.api_key, self.cfg.servers, headers) as mcp:
-                tools = await mcp.openai_tools() + [d for d, _ in self.local_tools.values()]
+                tools = await mcp.openai_tools() + ([d for d, _ in self.local_tools.values()] if local_tools else [])
                 for _ in range(steps):
                     msg = await self._chat(llm, convo, tools, events)
                     if isinstance(msg, Result):  # refused by the gateway
