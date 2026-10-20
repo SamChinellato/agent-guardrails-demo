@@ -293,7 +293,7 @@ function render(ex, d) {
   if (d.kind === "error") { box.append(notice("Something went wrong", d.message)); return; }
   if (d.kind === "halted") { box.append(SUSPENDED(), metaLine(ex)); return; }
 
-  const steps = d.kind === "steps" ? d.steps : [{ kind: "agent", ...d }];
+  const steps = d.kind === "steps" ? d.steps : [{ ...d, kind: "agent" }];
   const trips = steps.filter(s => s.kind === "lane" && s.tone === "stop");
   ex.suspended = trips.map(s => s.scope).filter(Boolean);
   for (const st of steps.filter(s => s.kind === "agent")) {
