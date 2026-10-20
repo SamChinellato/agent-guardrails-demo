@@ -27,7 +27,7 @@ define not_yet
 	@echo "make $@: not implemented yet (phase $(1)). See docs/REQUIREMENTS_STATUS.md." >&2; exit 2
 endef
 
-.PHONY: help tools admin-ui ui prereqs prefetch up down reset status demo demo-all trip kill-reset \
+.PHONY: help tools admin-ui ui diagram prereqs prefetch up down reset status demo demo-all trip kill-reset \
         policy-set evidence evidence-verify test clean-room logs pin-check
 
 help: ## List targets
@@ -90,6 +90,9 @@ clean-room: ## Double clean rebuild proof (P7)
 
 admin-ui: ## Open the APISIX admin UI on localhost:9180/ui via port-forward (read-only key shown)
 	@scripts/admin-ui.sh
+
+diagram: ## Render docs/architecture.png from docs/diagram/architecture.py (in a container)
+	@scripts/diagram.sh
 
 ui: ## Open a secondary UI: make ui UI=prometheus|alertmanager|evidence|apisix
 	@scripts/ui.sh "$(UI)"

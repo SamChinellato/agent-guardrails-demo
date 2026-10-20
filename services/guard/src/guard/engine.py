@@ -118,17 +118,23 @@ class LocalDecider:
         model = self._score(text) if s.origin == "external" else 0.0
         threshold = policy.check(s.check).threshold or 0.9
         score, rule_id = (heur.score, heur.rule_id) if heur.score > model else (model, "classifier")
+        signals = (f"classifier {model:.3f}" if s.origin == "external" else "classifier not applied (agent-produced text)")
+        signals += f", heuristic {heur.rule_id} {heur.score:.2f}" if heur.rule_id else ", no heuristic matched"
         if score >= threshold:
-            return Judgement(True, score, rule_id, f"prompt injection suspected (score {score:.2f} >= {threshold})")
-        reason = "no injection detected" + ("" if s.origin == "external" else " (agent-produced text: heuristics only)")
-        return Judgement(False, score, rule_id if heur.rule_id else None, reason)
+            return Judgement(True, score, rule_id,
+                             f"looks like a prompt injection: score {score:.3f} is at or above the {threshold} threshold ({signals})")
+        return Judgement(False, score, rule_id if heur.rule_id else None,
+                         f"no injection found: score {score:.3f} is below the {threshold} threshold ({signals})")
 
     def _allowlist(self, policy: Policy, s: Subject) -> Judgement:
         if s.tool in policy.deny_tools_all:
-            return Judgement(True, 1.0, "deny_tools_all", f"{s.tool} is denied to all agents")
+            return Judgement(True, 1.0, "deny_tools_all",
+                             f"{s.tool} is denied to all agents (policy rule deny_tools_all)")
         if s.tool not in policy.agent(s.agent).tools:
-            return Judgement(True, 1.0, "agent_allowlist", f"{s.tool} is not in {s.agent}'s tool allowlist")
-        return Judgement(False, 0.0, None, "tool allowed")
+            allowed = ", ".join(sorted(policy.agent(s.agent).tools)) or "none"
+            return Judgement(True, 1.0, "agent_allowlist",
+                             f"{s.tool} is not in the {s.agent}'s tool allowlist (allowed: {allowed})")
+        return Judgement(False, 0.0, None, f"{s.tool} is in the {s.agent}'s tool allowlist")
 
     def _arguments(self, policy: Policy, s: Subject) -> Judgement:
         rules = policy.agent(s.agent).argument_rules.get(s.tool) or {}
@@ -141,12 +147,15 @@ class LocalDecider:
                 domain = r.rsplit("@", 1)[-1].lower() if "@" in r else ""
                 # demo.local and its subdomains (e.g. blueridge.demo.local) are internal
                 if not any(domain == d or domain.endswith("." + d) for d in allowed_domains):
-                    return Judgement(True, 1.0, "to_domain_allow", f"recipient domain {domain or r!r} is not allowed")
+                    return Judgement(True, 1.0, "to_domain_allow",
+                                     f"recipient domain {domain or r!r} is outside the allowed domains "
+                                     f"({', '.join(sorted(allowed_domains))}) for {s.tool}")
         if allowed := rules.get("fields_allow"):
             extra = sorted(set((args.get("fields") or {}).keys()) - set(allowed))
             if extra:
-                return Judgement(True, 1.0, "fields_allow", f"fields {extra} may not be changed")
-        return Judgement(False, 0.0, None, "arguments allowed")
+                return Judgement(True, 1.0, "fields_allow",
+                                 f"fields {extra} may not be changed (allowed: {', '.join(allowed)})")
+        return Judgement(False, 0.0, None, "arguments within the policy" if rules else "no argument rules for this tool")
 
 
 class SeenTexts:

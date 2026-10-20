@@ -1,0 +1,156 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "",
+  "editable": false,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "targetBlank": false,
+      "title": "AI Gateway Overview",
+      "type": "link",
+      "url": "/d/ai-gateway-overview"
+    },
+    {
+      "targetBlank": false,
+      "title": "Agent Behaviour",
+      "type": "link",
+      "url": "/d/agent-behaviour"
+    },
+    {
+      "targetBlank": false,
+      "title": "Incident",
+      "type": "link",
+      "url": "/d/incident"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Ascending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"guard\"} | event=\"guard_decision\" | trace_id=\"$trace_id\" | line_format \"{{ .verdict | upper }}   {{ .agent }}   {{ .check }} ({{ .mode }}){{ if .tool }}   tool {{ .tool }}{{ end }}\\n{{ .reason }}\\n{{ if .rule_id }}rule {{ .rule_id }}   {{ end }}policy {{ .policy_version }}   {{ .decision_id }}\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Guard decisions, in order",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 2,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Ascending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"killswitch\"} | trace_id=\"$trace_id\" | event_type=~\"trip|reset\" | line_format \"{{ .event_type | upper }} {{ .scope }}   source {{ .source }}, actor {{ .actor }}\\n{{ .reason }}\\nverified={{ .verified }} in {{ .latency_ms }} ms{{ if .incident_id }}   incident {{ .incident_id }}{{ end }}{{ if .decision_id }}   decision {{ .decision_id }}{{ end }}\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Kill-switch actions",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 3,
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "query": "$trace_id",
+          "queryType": "traceql",
+          "refId": "A"
+        }
+      ],
+      "title": "The request, end to end",
+      "type": "traces"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "ai-gateway-demo"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "value": ""
+        },
+        "label": "Trace",
+        "name": "trace_id",
+        "query": "",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
+  "timezone": "browser",
+  "title": "Decision trail",
+  "uid": "decision-trail",
+  "version": 1
+}

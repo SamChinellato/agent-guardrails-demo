@@ -27,6 +27,14 @@ PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 app = create_app("console")
 
 
+@app.get("/architecture.png", include_in_schema=False)
+async def architecture():
+    """The architecture diagram (make diagram), shown from the console header."""
+    from fastapi.responses import FileResponse
+
+    return FileResponse(Path(__file__).parent / "static" / "architecture.png", media_type="image/png")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def page() -> HTMLResponse:
     return HTMLResponse(PAGE.replace("{{GRAFANA_PORT}}", GRAFANA_PORT))

@@ -60,6 +60,9 @@
   .lane-note.stop { background: var(--stop-soft); border-color: var(--stop); color: var(--stop); font-weight: 600; }
   .lane-note.ok { border-color: var(--pass); color: var(--pass); font-weight: 600; }
   .who { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
+  .lane-note .why { color: inherit; font-weight: 400; }
+  .sub { color: var(--muted); font-size: 0.95rem; margin: 2px 0 0; }
+  .sub a { color: var(--muted); }
 
   /* The conversation: you | gateway lane | agent */
   .board {
@@ -123,13 +126,16 @@
 </head>
 <body>
 <header>
-  <h1>Supplier assistant</h1>
+  <div>
+    <h1>Supplier assistant</h1>
+    <p class="sub">Acme procurement. You're a procurement analyst; the assistant reviews supplier documents and passes follow-ups to an executor agent. <a href="architecture.png" target="_blank" rel="noopener">How it works</a></p>
+  </div>
   <button class="reset" id="reset" type="button" title="Open every kill switch and restore the policy">Reset</button>
 </header>
 
 <main class="board" id="board" aria-live="polite">
   <div class="heads"><span>You</span><span>Gateway</span><span>Researcher agent</span></div>
-  <p class="empty" id="empty">Ask the agent to review the supplier documents.</p>
+  <p class="empty" id="empty">Ask about Acme's suppliers, for example: which suppliers are below their delivery target?</p>
 </main>
 
 <form id="form">
@@ -171,10 +177,10 @@ function el(tag, cls, text) {
   if (text !== undefined) n.textContent = text;
   return n;
 }
-function traceLink(id) {
-  const panes = { a: { datasource: "tempo", queries: [{ refId: "A", queryType: "traceql", query: id }], range: { from: "now-1h", to: "now" } } };
-  const a = el("a", "", "trace");
-  a.href = `${GRAFANA}/explore?schemaVersion=1&panes=${encodeURIComponent(JSON.stringify(panes))}`;
+// Opens the Decision trail dashboard for one request: guard decisions, kill switch, trace
+function traceLink(id, text = "decision trail") {
+  const a = el("a", "", text);
+  a.href = `${GRAFANA}/d/decision-trail?var-trace_id=${encodeURIComponent(id)}&from=now-1h&to=now`;
   a.target = "_blank"; a.rel = "noopener";
   return a;
 }
@@ -282,9 +288,11 @@ input.addEventListener("keydown", (e) => {
 });
 function busy(on) { send.disabled = resetBtn.disabled = on; }
 
-function laneNote(tone, text) {
+function laneNote(tone, text, traceId) {
   const row = el("div", "note-row");
-  row.append(el("div", "lane-note " + (tone || "info"), text));
+  const note = el("div", "lane-note " + (tone || "info"), text);
+  if (traceId) { note.append(" "); const a = traceLink(traceId, "why?"); a.className = "why"; note.append(a); }
+  row.append(note);
   board.append(row);
 }
 
@@ -311,7 +319,7 @@ function toolLines(events) {
 function renderSteps(steps, first = null) {
   let slot = first;
   for (const st of steps) {
-    if (st.kind === "lane") { laneNote(st.tone, st.text); slot = null; continue; }
+    if (st.kind === "lane") { laneNote(st.tone, st.text, st.trace_id); slot = null; continue; }
     if (st.kind === "user") { slot = addRow(st.text); slot.dot.classList.remove("wait"); continue; }
     if (st.kind === "blocked") {
       const s2 = addRow(st.text);

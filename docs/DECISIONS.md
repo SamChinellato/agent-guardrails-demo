@@ -529,3 +529,25 @@ Played end to end in a browser:
 | Meridian | 0.9 s |
 | Coastal (executor stopped, 18 ms) | 1.6 s |
 | Rogue (stopped by the alert) | 23 s |
+
+## D-045 Architecture diagram, one persona, and the decision trail (demo prep)
+
+- **Diagram.** `docs/diagram/architecture.py`, rendered with `diagrams` by `make diagram`, runs in a throwaway container from the pinned Python base image, so Graphviz isn't needed on the host. It is written to `docs/architecture.png` and served by the console at `/console/architecture.png` (the **How it works** link).
+  - **Capabilities, not products,** at the operator's request: gateway, guard, kill switch, LLM API, MCP tools, telemetry, dashboards. No product or model names.
+  - **Edges:** bold blue for requests, all through the gateway; red for control; one dashed telemetry edge.
+- **One persona everywhere.**
+  - *You* are a procurement analyst at Acme.
+  - The *researcher* reviews supplier performance documents.
+  - The *executor* updates supplier records and emails internal teams.
+  - The same wording is in the agents' system prompts, the console header, the scripted replies, the diagram and `DEMO_SCRIPT.md`.
+- **Self-explaining decisions.** Guard reasons now carry the evidence for the verdict:
+  - injection checks give the score, the threshold, and the classifier and heuristic signals (or say the classifier wasn't applied because the text was agent-produced)
+  - tool checks name the policy rule (`deny_tools_all`, the agent's allowlist with its contents, `to_domain_allow`, `fields_allow`)
+  - a guard auto-trip's reason is the decision's reason plus its check
+- **Decision trail dashboard** (`/d/decision-trail?var-trace_id=…`). For one request it shows:
+  1. the guard's decisions in order: verdict, agent, check, mode, tool, reason, rule, policy version, decision ID
+  2. the kill-switch actions in that trace, carrying the same decision ID
+  3. the trace itself
+
+  The console's **decision trail** link under a reply, and **why?** on a kill note, open it.
+- **Precondition housekeeping gets its own trace.** The console runs it under a fresh trace context, so a scenario's trace shows only the scenario; it used to start with "RESET by the manual".

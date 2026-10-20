@@ -71,7 +71,7 @@ ACTION_WORDS = {"export_customer_data": "export customer data", "send_email": "s
 def describe_trip(e: dict) -> str:
     who, ms = LABEL.get(e["scope"], e["scope"]), f"verified in {e['latency_ms']:.0f} ms"
     if e["source"] == "guard":
-        m = re.search(r"actions\.(\w+)", e["reason"])
+        m = re.search(r"actions\.(\w+)", e["reason"])  # e.g. "actions.export_customer_data is denied …"
         did = ACTION_WORDS.get(m.group(1), m.group(1).replace("_", " ")) if m else "a forbidden action"
         return f"Kill switch: {who} stopped by the guard after it tried to {did} ({ms})"
     if e["source"] == "alertmanager":
@@ -108,7 +108,18 @@ async def set_policy(overrides: dict) -> None:
 
 
 async def preconditions(overrides: dict | None = None) -> list[str]:
-    """Every scenario starts with all kill switches open and its own policy modes."""
+    """Every scenario starts with all kill switches open and its own policy modes. This runs in
+    a trace of its own, so the scenario's trace shows only the scenario (D-045)."""
+    from opentelemetry import context as otel_context
+
+    token = otel_context.attach(otel_context.Context())
+    try:
+        return await _preconditions(overrides)
+    finally:
+        otel_context.detach(token)
+
+
+async def _preconditions(overrides: dict | None = None) -> list[str]:
     released = []
     for scope, on in (await ks_status()).items():
         if on:
@@ -185,8 +196,8 @@ async def coastal_cascade(text: str) -> list[dict]:
     start = time.time()
     steps = [await task(text, "coastal:scripted")]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
-              for e in await kill_events(start)]
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"],
+               "trace_id": (e.get("trace_ids") or [None])[0]} for e in await kill_events(start)]
     return steps
 
 

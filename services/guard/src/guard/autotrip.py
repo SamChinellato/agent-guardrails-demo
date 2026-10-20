@@ -67,7 +67,7 @@ class AutoTrip:
         try:
             body = {
                 "scope": scope,
-                "reason": f"guard: {d.check} ({d.reason})",
+                "reason": f"{d.reason} [{d.check}]",
                 "actor": "guard",
                 "source": "guard",
                 "trace_ids": [d.trace_id] if d.trace_id else [],

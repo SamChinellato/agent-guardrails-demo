@@ -290,8 +290,46 @@ def incident() -> dict:
     return dashboard("incident", "Incident", "", p, annotations=[GUARD_BLOCK_ANNOTATION, KILL_ANNOTATION])
 
 
+def decision_trail() -> dict:
+    """How a decision was reached, for one request (D-045): the guard's decisions in order with
+    the score, threshold and rule behind each, then the kill-switch actions, then the trace."""
+    lay = Layout()
+
+    def log_panel(title, expr):
+        return {
+            "type": "logs", "title": title, "datasource": LOKI,
+            "targets": [{"datasource": LOKI, "expr": expr, "refId": "A"}],
+            "options": {"showTime": True, "wrapLogMessage": True, "sortOrder": "Ascending",
+                        "enableLogDetails": True, "dedupStrategy": "none", "showLabels": False},
+        }
+
+    decisions = log_panel(
+        "Guard decisions, in order",
+        '{service_name="guard"} | event="guard_decision" | trace_id="$trace_id" '
+        '| line_format "{{ .verdict | upper }}   {{ .agent }}   {{ .check }} ({{ .mode }}){{ if .tool }}   tool {{ .tool }}{{ end }}\\n'
+        '{{ .reason }}\\n{{ if .rule_id }}rule {{ .rule_id }}   {{ end }}policy {{ .policy_version }}   {{ .decision_id }}"',
+    )
+    kills = log_panel(
+        "Kill-switch actions",
+        '{service_name="killswitch"} | trace_id="$trace_id" | event_type=~"trip|reset" '
+        '| line_format "{{ .event_type | upper }} {{ .scope }}   source {{ .source }}, actor {{ .actor }}\\n{{ .reason }}\\n'
+        'verified={{ .verified }} in {{ .latency_ms }} ms{{ if .incident_id }}   incident {{ .incident_id }}{{ end }}'
+        '{{ if .decision_id }}   decision {{ .decision_id }}{{ end }}"',
+    )
+    trace = {
+        "type": "traces", "title": "The request, end to end", "datasource": {"type": "tempo", "uid": "tempo"},
+        "targets": [{"datasource": {"type": "tempo", "uid": "tempo"}, "queryType": "traceql", "query": "$trace_id", "refId": "A"}],
+    }
+    p = [lay.place(decisions, 24, 18), lay.place(kills, 24, 5), lay.place(trace, 24, 18)]
+    d = dashboard("decision-trail", "Decision trail", "", p)
+    d["time"] = {"from": "now-1h", "to": "now"}
+    d["refresh"] = ""
+    d["templating"] = {"list": [{"name": "trace_id", "label": "Trace", "type": "textbox", "query": "", "current": {"value": ""}}]}
+    return d
+
+
 if __name__ == "__main__":
-    for d in (overview(), agent_behaviour(), incident()):
+    for d in (overview(), agent_behaviour(), incident(), decision_trail()):
         path = OUT / f"{d['uid']}.json"
         path.write_text(json.dumps(d, indent=2, sort_keys=True) + "\n")
         print(f"wrote {path.name} ({len(d['panels'])} panels)")
