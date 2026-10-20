@@ -551,3 +551,18 @@ Played end to end in a browser:
 
   The console's **decision trail** link under a reply, and **why?** on a kill note, open it.
 - **Precondition housekeeping gets its own trace.** The console runs it under a fresh trace context, so a scenario's trace shows only the scenario; it used to start with "RESET by the manual".
+
+## D-046: The console is an ordinary chat app, explains every stop, and shows where a message went
+
+- **Layout.** One conversation column: your messages on the right, the assistant's on the left, a typing indicator, Enter to send, starter prompts on an empty chat. **New chat** replaces Reset: it clears the conversation, opens every kill switch and restores the policy. The gateway-lane board of D-043 is gone.
+- **Every stop is explained in plain words** in a red gateway notice:
+  - a blocked message gives the injection check's score and threshold (`ai-injection-guard` now passes the guard's check, score and reason in its 403 body; nothing new is revealed beyond the decision itself), or says it matched a known attack phrase
+  - a withheld document, a blocked action, and a suspended assistant each get their own notice
+  - a kill-switch trip is described from its audit event: what the agent tried, the policy that forbids it or the alert it set off, and the verification time
+- **Monitoring** (header toggle) draws the selected message's path across the major components (you, the two agents, LLM API, documents tool, actions tool, kill switch). It's built from the request's real trace, read through `GET /api/flow/{trace_id}`:
+  - gateway spans give each link and its call count (route and consumer)
+  - 400/403 means blocked; 503 means refused by the kill switch
+  - the guard's `guard.decision` events give blocked tool calls and withheld documents
+  - `killswitch.trip` spans give in-request kills; alert-driven kills come from the console's own trip notes
+
+  Each link carries a dot where the gateway checks it, and a red diamond where it stopped something. The console gets NetworkPolicy egress to Tempo :3200 for this.

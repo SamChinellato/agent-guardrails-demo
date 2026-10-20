@@ -42,11 +42,14 @@ function _M.check_schema(conf)
 end
 
 
-local function reject(status, err_type, message, decision_id)
+local function reject(status, err_type, message, decision_id, detail)
     core.response.set_header("Content-Type", "application/json")
-    return status, {
-        error = { type = err_type, message = message, decision_id = decision_id },
-    }
+    local err = { type = err_type, message = message, decision_id = decision_id }
+    -- the guard's own explanation (check, score, reason), so a client can tell its user why
+    for k, v in pairs(detail or {}) do
+        err[k] = v
+    end
+    return status, { error = err }
 end
 
 
@@ -109,7 +112,8 @@ function _M.access(conf, ctx)
     if result.verdict == "block" then
         return reject(403, "prompt_injection_blocked",
                       "Blocked by AI gateway policy (" .. (result.check or "injection") .. ")",
-                      result.decision_id)
+                      result.decision_id,
+                      { check = result.check, score = result.score, reason = result.reason })
     end
     if result.verdict == "flag" and result.decision_id then
         core.response.set_header("X-Guard-Flag", result.decision_id)

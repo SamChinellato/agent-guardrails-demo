@@ -172,5 +172,8 @@ spec:
       ports: [{port: 8000, protocol: TCP}]
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}, podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}}]
       ports: [{port: 9090, protocol: TCP}]
+    # Monitoring tab: read a request's trace (D-046)
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}, podSelector: {matchLabels: {app.kubernetes.io/name: tempo}}}]
+      ports: [{port: 3200, protocol: TCP}]
     - to: [{ipBlock: {cidr: "${APISERVER_EGRESS}"}}]
       ports: [{port: 6443, protocol: TCP}]

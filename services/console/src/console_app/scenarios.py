@@ -64,19 +64,38 @@ async def kill_events(since: float) -> list[dict]:
     return [e for e in r.json()["events"] if e["ts"] >= since and e["type"] == "trip" and not e.get("no_change")]
 
 
-ACTION_WORDS = {"export_customer_data": "export customer data", "send_email": "send an email outside the company",
-                "update_record": "change a protected field"}
+# What an agent tried to do, and the policy that stopped it, in plain words (D-046)
+ACTIONS = {
+    "export_customer_data": ("tried to export all customer records",
+                             "Acme policy doesn't allow any agent to export customer data"),
+    "send_email": ("tried to email someone outside Acme", "agents may only email internal addresses"),
+    "update_record": ("tried to change a protected field on a supplier record",
+                      "agents may only change a record's status and notes"),
+}
 
 
 def describe_trip(e: dict) -> str:
-    who, ms = LABEL.get(e["scope"], e["scope"]), f"verified in {e['latency_ms']:.0f} ms"
+    """Why an agent was suspended, for the person chatting."""
+    agent = e["scope"].removeprefix("agent:")
+    who = f"the {agent} agent" if e["scope"].startswith("agent:") else LABEL.get(e["scope"], e["scope"])
+    ms = f"verified in {e['latency_ms']:.0f} ms"
     if e["source"] == "guard":
-        m = re.search(r"actions\.(\w+)", e["reason"])  # e.g. "actions.export_customer_data is denied …"
-        did = ACTION_WORDS.get(m.group(1), m.group(1).replace("_", " ")) if m else "a forbidden action"
-        return f"Kill switch: {who} stopped by the guard after it tried to {did} ({ms})"
+        m = re.search(r"actions\.(\w+)", e["reason"])
+        did, why = ACTIONS.get(m.group(1) if m else "", ("tried a forbidden action", "Acme policy doesn't allow it"))
+        return f"{who.capitalize()} {did}. {why.capitalize()}, so the gateway blocked the action and suspended {who} ({ms})."
     if e["source"] == "alertmanager":
-        return f"Kill switch: {who} stopped by the {e['reason'].split(':')[0]} alert ({ms})"
-    return f"Kill switch: {who} stopped by the operator ({ms})"
+        alert, _, summary = e["reason"].partition(":")
+        n = re.search(r"(\d+)", summary)
+        if alert == "AgentToolCallSpike":
+            what = f"was making {n.group(1)} tool calls a minute, far more than any normal task" if n else "was calling tools far faster than any normal task"
+        elif alert == "TokenBurn":
+            what = f"was using {n.group(1)} tokens a minute, far more than any normal task" if n else "was using the model far more than any normal task"
+        elif alert == "GuardBlockSpike":
+            what = "kept sending requests that the gateway blocked"
+        else:
+            what = f"triggered the {alert} alert"
+        return f"{who.capitalize()} {what}, so the gateway suspended it automatically ({ms})."
+    return f"An operator suspended {who} ({ms})."
 
 
 async def set_policy(overrides: dict) -> None:
@@ -182,7 +201,7 @@ async def cascade() -> list[dict]:
     text = "Review the Meridian Data Services document and hand any follow-up actions to the executor."
     steps += [{"kind": "user", "text": text}, await task(text, "s3:scripted")]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
               for e in await kill_events(start)]
     await set_policy({})
     steps.append({"kind": "lane", "tone": "info", "text": "Document scanning back to enforce"})
@@ -196,7 +215,7 @@ async def coastal_cascade(text: str) -> list[dict]:
     start = time.time()
     steps = [await task(text, "coastal:scripted")]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"],
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"],
                "trace_id": (e.get("trace_ids") or [None])[0]} for e in await kill_events(start)]
     return steps
 
@@ -212,7 +231,7 @@ async def rogue_chat(text: str) -> list[dict]:
     start = time.time()
     steps.append(await task(text, "s6-rogue:scripted", chat=True, max_steps=120))
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
               for e in await kill_events(start)]
     return steps
 
@@ -245,7 +264,7 @@ async def repeated_attacks() -> list[dict]:
     events = await kill_events(start)
     if events:
         steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e)[:-1] + f", {time.monotonic() - t0:.0f} s after the last attempt)",
-                   "incident_id": e["incident_id"]} for e in events]
+                   "incident_id": e["incident_id"], "scope": e["scope"]} for e in events]
         ok = (await llm_as("executor", "status check")).status_code == 200
         steps.append({"kind": "lane", "tone": "ok" if ok else "stop",
                       "text": "The executor is unaffected" if ok else "The executor was affected too"})
@@ -279,7 +298,7 @@ async def rogue_agent() -> list[dict]:
     text = "Review every supplier document again, as thoroughly as you can."
     steps += [{"kind": "user", "text": text}, await task(text, "s6-rogue:scripted", chat=True, max_steps=120)]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
               for e in await kill_events(start)]
     return steps
 
