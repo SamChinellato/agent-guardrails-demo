@@ -25,6 +25,8 @@ prometheusOperator:
     limits: {cpu: 500m, memory: 256Mi}
 
 prometheus:
+  # Always reachable at HOST_PORT_PROMETHEUS (k3d/cluster.yaml); 30090 is the kill-switch panel's
+  service: {type: NodePort, nodePort: 30909}
   prometheusSpec:
     scrapeInterval: 5s                  # KS-10 demo timings
     evaluationInterval: 5s
@@ -44,6 +46,7 @@ prometheus:
           resources: {requests: {storage: 5Gi}}
 
 alertmanager:
+  service: {type: NodePort, nodePort: 30903}   # HOST_PORT_ALERTMANAGER
   alertmanagerSpec:
     resources:
       requests: {cpu: 20m, memory: 32Mi}

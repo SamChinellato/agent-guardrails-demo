@@ -464,3 +464,15 @@ The HTML collapses a run of routine tool calls by one agent into a single row; S
 - **Credentials removed:** key, password, secret, token, credential and authorization values are taken out of the exported APISIX config.
 - **Secret scan:** before writing the manifest, the bundle is scanned for every value in `.secrets/`, and the command refuses to finish on a hit. Raw traces keep span attributes as recorded, such as an email recipient, because they are the raw evidence; the guard's excerpts and the report are redacted.
 - **Phone pattern:** the phone-number pattern originally matched dates inside incident IDs (`INC-[phone]c2`). It now matches written phone formats only, fixed in both the guard and the report.
+
+## D-042 Prometheus, Alertmanager and evidence reports are always on (demo prep)
+
+At the operator's request, the secondary UIs are reachable on the LAN like the main screens, with no command to run:
+
+| UI | Host port | NodePort | Note |
+| --- | --- | --- | --- |
+| Prometheus | 9090 | 30909 | The chart's default NodePort 30090 is the panel's |
+| Alertmanager | 9093 | 30903 | |
+| Evidence viewer | 8099 | 30899 | Read-only `http.server` in the pinned Python base image |
+
+The evidence viewer serves the host's `evidence/` folder, mounted into the k3d node, so new bundles appear immediately. All ports follow `HOST_BIND` and can be overridden with `HOST_PORT_*`. The APISIX dashboard stays local-only through `make admin-ui` (rule 6). This change required re-creating the cluster once, for the new port mappings and volume.

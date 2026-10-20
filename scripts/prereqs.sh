@@ -99,7 +99,8 @@ port_in_use() {
   if command -v ss >/dev/null 2>&1; then [[ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]]
   else lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; fi
 }
-for p in "$HOST_PORT_GATEWAY" "$HOST_PORT_GRAFANA" "$HOST_PORT_PANEL" "$REGISTRY_PORT"; do
+for p in "$HOST_PORT_GATEWAY" "$HOST_PORT_GRAFANA" "$HOST_PORT_PANEL" "$HOST_PORT_PROMETHEUS" \
+         "$HOST_PORT_ALERTMANAGER" "$HOST_PORT_EVIDENCE" "$REGISTRY_PORT"; do
   if port_in_use "$p"; then
     owner="$(runtime_cli ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E ":$p->" | awk '{print $1}' | head -1 || true)"
     if [[ "$owner" == k3d-* ]]; then ok "port $p in use by $owner (this demo)"

@@ -15,6 +15,16 @@ ports:
     nodeFilters: [loadbalancer]
   - port: ${HOST_BIND}:${HOST_PORT_PANEL}:30090     # killswitch control panel
     nodeFilters: [loadbalancer]
+  - port: ${HOST_BIND}:${HOST_PORT_PROMETHEUS}:30909   # Prometheus
+    nodeFilters: [loadbalancer]
+  - port: ${HOST_BIND}:${HOST_PORT_ALERTMANAGER}:30903 # Alertmanager
+    nodeFilters: [loadbalancer]
+  - port: ${HOST_BIND}:${HOST_PORT_EVIDENCE}:30899     # evidence reports (read-only)
+    nodeFilters: [loadbalancer]
+volumes:
+  # Evidence bundles, served read-only by the evidence viewer (deploy/manifests/60-evidence-viewer.yaml)
+  - volume: ${DEMO_ROOT}/evidence:/demo-evidence
+    nodeFilters: [server:*]
 registries:
   # Created beforehand by up.sh (k3d's inline registry creation fails on Podman, D-009)
   use:

@@ -10,7 +10,10 @@ LLM_MODE="${LLM_MODE:-mock}"
 "$ROOT/scripts/prereqs.sh" "$LLM_MODE" >/dev/null || { "$ROOT/scripts/prereqs.sh" "$LLM_MODE"; exit 1; }
 detect_runtime || die "no container runtime"
 llm_host_settings
-export K3S_IMAGE K3S_DIGEST HOST_BIND HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL
+export K3S_IMAGE K3S_DIGEST HOST_BIND HOST_PORT_GATEWAY HOST_PORT_GRAFANA HOST_PORT_PANEL \
+  HOST_PORT_PROMETHEUS HOST_PORT_ALERTMANAGER HOST_PORT_EVIDENCE
+export DEMO_ROOT="$ROOT"
+mkdir -p "$ROOT/evidence"
 # k3d's own helper images, pinned (REP-02)
 export K3D_IMAGE_LOADBALANCER="$(pinned_ref K3D_PROXY)" K3D_IMAGE_TOOLS="$(pinned_ref K3D_TOOLS)"
 
@@ -32,6 +35,7 @@ if k3d cluster list -o json 2>/dev/null | jq -e --arg n "$CLUSTER_NAME" '.[] | s
   fi
   # Port mappings are fixed at creation: refuse to silently keep a different bind/port
   want="$HOST_BIND:$HOST_PORT_GATEWAY $HOST_BIND:$HOST_PORT_GRAFANA $HOST_BIND:$HOST_PORT_PANEL"
+  want+=" $HOST_BIND:$HOST_PORT_PROMETHEUS $HOST_BIND:$HOST_PORT_ALERTMANAGER $HOST_BIND:$HOST_PORT_EVIDENCE"
   have="$(runtime_cli port "k3d-$CLUSTER_NAME-serverlb" 2>/dev/null | awk '{print $3}' | sort | tr '\n' ' ')"
   for w in $want; do
     [[ " $have " == *" $w "* ]] || die "cluster ports ($have) differ from requested ($want). Run: make down && make up"
@@ -74,6 +78,7 @@ helm_install tempo observability tempo TEMPO "$ROOT/deploy/helm-values/tempo.yam
 helm_install loki observability loki LOKI "$ROOT/deploy/helm-values/loki.yaml" \
   --set "loki.image.tag=${LOKI_IMAGE##*:}" --set "loki.image.digest=$LOKI_DIGEST"
 "$ROOT/scripts/apply-observability.sh"
+sed "s|\${PYTHON_BASE_REF}|$(pinned_ref PYTHON_BASE)|" "$ROOT/deploy/manifests/60-evidence-viewer.yaml" | kubectl apply -f - >/dev/null
 
 # ---------------------------------------------------------------- built images
 "$ROOT/scripts/build-images.sh"
@@ -151,7 +156,8 @@ kubectl -n gateway rollout status deployment/killswitch --timeout=180s >/dev/nul
 lan=""
 if [[ "$HOST_BIND" == 0.0.0.0 ]]; then
   ip="$( (hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null) | awk '{print $1}')"
-  [[ -n "$ip" ]] && lan="  From the LAN: http://$ip:$HOST_PORT_GATEWAY/console, http://$ip:$HOST_PORT_GRAFANA (Grafana), http://$ip:$HOST_PORT_PANEL (kill switch)"
+  [[ -n "$ip" ]] && lan="  From the LAN: http://$ip:$HOST_PORT_GATEWAY/console, http://$ip:$HOST_PORT_GRAFANA (Grafana), http://$ip:$HOST_PORT_PANEL (kill switch),
+               http://$ip:$HOST_PORT_PROMETHEUS (Prometheus), http://$ip:$HOST_PORT_ALERTMANAGER (Alertmanager), http://$ip:$HOST_PORT_EVIDENCE (evidence)"
 fi
 cat <<EOF
 
@@ -160,6 +166,7 @@ Demo is up (LLM_MODE=$LLM_MODE, runtime=$CONTAINER_RUNTIME).
   Grafana:     http://localhost:$HOST_PORT_GRAFANA  (anonymous viewer; admin password in .secrets/grafana-admin-password)
   Console:     http://localhost:$HOST_PORT_GATEWAY/console
   Kill switch: http://localhost:$HOST_PORT_PANEL  (operator token: cat .secrets/killswitch-operator-token)
+  Prometheus:  http://localhost:$HOST_PORT_PROMETHEUS   Alertmanager: http://localhost:$HOST_PORT_ALERTMANAGER   Evidence: http://localhost:$HOST_PORT_EVIDENCE
   KUBECONFIG:  $KUBECONFIG
   Secrets:     $ROOT/.secrets/ (mode 600)
 $lan

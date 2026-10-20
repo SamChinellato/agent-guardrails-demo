@@ -1,0 +1,44 @@
+# Read-only web view of evidence/ (bundles and their report.html), always on at
+# HOST_PORT_EVIDENCE. The host folder is mounted into the k3d node (k3d/cluster.yaml).
+# ${PYTHON_BASE_REF} is the pinned Python base image, substituted by scripts/up.sh.
+apiVersion: v1
+kind: Service
+metadata: {name: evidence-viewer, namespace: observability, labels: {app: evidence-viewer}}
+spec:
+  type: NodePort
+  selector: {app: evidence-viewer}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000, nodePort: 30899}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: evidence-viewer, namespace: observability, labels: {app: evidence-viewer}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: evidence-viewer}}
+  template:
+    metadata: {labels: {app: evidence-viewer}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: viewer
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "-m", "http.server", "8000", "--directory", "/evidence"]
+          ports: [{name: http, containerPort: 8000}]
+          readinessProbe: {tcpSocket: {port: http}, periodSeconds: 5}
+          resources:
+            requests: {cpu: 5m, memory: 24Mi}
+            limits: {cpu: 100m, memory: 96Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+      volumes:
+        - name: evidence
+          hostPath: {path: /demo-evidence, type: Directory}

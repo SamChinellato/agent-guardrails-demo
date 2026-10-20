@@ -9,6 +9,9 @@ One story in five beats, about 15 minutes: **an AI gateway that sees everything 
 | Console | `http://<host>:8080/console` | The audience watches this most |
 | Grafana | `http://<host>:3001/d/agent-behaviour` | Keep **Agent Behaviour** open; **Incident** for beats 4–5 |
 | Kill switch | `http://<host>:8090` | Token: `cat .secrets/killswitch-operator-token` |
+| Prometheus | `http://<host>:9090/alerts` | Watch alert rules go pending, then firing, in beat 5 |
+| Alertmanager | `http://<host>:9093` | The alert being sent on to the killswitch |
+| Evidence | `http://<host>:8099` | Every bundle's `report.html`, as soon as it's made |
 
 Run `make reset` before you start, and between rehearsals. It takes a few seconds and leaves every switch open, the policy restored and the outbox empty. `make status` shows the state at a glance.
 
@@ -50,7 +53,7 @@ Scenario commands run a **script**, so they behave the same way every time. The 
 - The executor tries to **export customer data** and **email it to an outside address**. The gateway denies the export, and the guard **trips the executor's kill switch** before the email can even be tried.
 - On the panel, the executor is shown as *Tripped* with the reason. In Grafana Incident, the kill-switch timeline turns red.
 
-**Then:** run `make evidence INCIDENT=<id from the output>` and open `evidence/<id>/report.html`. It shows what happened, the time from violation to trip (milliseconds), what was blocked, and the timeline. `make evidence-verify DIR=evidence/<id>` proves nothing in the bundle was changed.
+**Then:** run `make evidence INCIDENT=<id from the output>` and open it at `http://<host>:8099/<id>/report.html`. It shows what happened, the time from violation to trip (milliseconds), what was blocked, and the timeline. `make evidence-verify DIR=evidence/<id>` proves nothing in the bundle was changed.
 
 ## 5. A rogue agent, shut down for its behaviour (console + Grafana Agent Behaviour)
 
