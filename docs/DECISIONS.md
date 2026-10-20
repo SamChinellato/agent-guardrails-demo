@@ -419,3 +419,48 @@ The first S3 run showed a race. The trip ran on a background thread, and the scr
 - The limit was raised to 1 GiB, 2 CPUs, for headroom.
 
 **Related.** A new APISIX pod can start before kube-router has programmed its allow rule to etcd (D-036). It then fails its first etcd check and restarts once. A `wait-etcd` init container, using the same pinned APISIX image and bash's `/dev/tcp` (the image has no curl), waits up to 60 s for etcd instead.
+
+## D-041 Evidence bundle design (P6)
+
+**Layout.** Everything `report.json` says is derived from `raw/` alone:
+
+```text
+evidence/<id>/
+  report.json     report.html     manifest.json
+  raw/request.json                  what was asked for, the search window, the trace ids
+  raw/traces/<trace>.json           Tempo, as returned
+  raw/logs/<trace>.jsonl            Loki lines for each trace
+  raw/guard-decisions.jsonl         guard decision records (block / flag) for those traces
+  raw/killswitch/audit.jsonl        the whole audit chain, so it can be verified
+  raw/metrics.json                  fixed Prometheus range queries over the window
+  raw/config/apisix.json            routes, consumers, plugin configs, upstreams, metadata; credentials removed
+  raw/config/guard-policy.json      policy and its version hash
+  raw/environment.json              versions.env, git SHA (and dirty flag), running image digests
+```
+
+**Scoping.** The ±10 minute window is where evidence is *searched for* (7.9 step 1), not what is included.
+- A trip that names its trace and decision, as a guard auto-trip does, scopes the bundle to exactly those traces and their decisions.
+- An alert-driven trip names none, so the bundle takes that agent's blocked or flagged decisions and gateway traffic in the two minutes before the trip.
+- Filtering happens **in LogQL**. Done client-side, it stopped at Loki's line limit, because the window held thousands of routine "allow" records from test runs; the first bundle missed the incident's own block, and "violation to trip" read 457 s.
+
+**Settling.** `make evidence` waits, bounded at 20 s, until every named trace is stored and has stopped growing and the trip's decision record is in Loki. A bundle made right after an incident is then complete; one test run found it incomplete before this.
+
+**Report.** Three parts:
+- **Summary:** what happened, what was blocked, who acted.
+- **Containment:** violation to trip (guard trips), start of activity to trip (alert trips), trip to verified, trip to reset.
+- **Timeline:** sorted by time, then component, then span. It holds the incident's kill-switch events, its alerts, guard block and flag decisions, and the spans that tell the story (`agent.task`, `mcp.tool_call`, `agent.handoff`, `guard.auto_trip`). Spans are de-duplicated by ID, because Tempo 3 returned some spans twice. Each entry has `control_refs: []` (EVD-07).
+
+The HTML collapses a run of routine tool calls by one agent into a single row; S6's 64 calls became one line. Denials, blocks, trips, alerts and hand-offs always keep their own rows. `report.json` keeps every entry.
+
+**Determinism (EVD-05).** `report.json` uses sorted keys and fixed formatting, and contains no generation time; that is only in `manifest.json`. `demo evidence-rebuild <dir>` regenerates the report from `raw/`, and a test asserts the bytes are identical.
+
+**Integrity (EVD-06).**
+- The manifest records each file's SHA-256 and a bundle hash over the sorted list.
+- `make evidence-verify` reports missing, extra or changed files, and recomputes the killswitch audit chain.
+- Tests flip one bit in six different files, and each fails verification.
+- Editing an audit event and then recomputing the whole manifest still fails, because the hash chain catches it.
+
+**Redaction and secrets (EVD-04).** Free text in the timeline and summary is redacted (emails, phone numbers, names), and the guard redacts excerpts at the source.
+- **Credentials removed:** key, password, secret, token, credential and authorization values are taken out of the exported APISIX config.
+- **Secret scan:** before writing the manifest, the bundle is scanned for every value in `.secrets/`, and the command refuses to finish on a hit. Raw traces keep span attributes as recorded, such as an email recipient, because they are the raw evidence; the guard's excerpts and the report are redacted.
+- **Phone pattern:** the phone-number pattern originally matched dates inside incident IDs (`INC-[phone]c2`). It now matches written phone formats only, fixed in both the guard and the report.

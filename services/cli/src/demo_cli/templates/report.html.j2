@@ -35,7 +35,8 @@
 {% set c = r.summary.containment %}
 {% if c %}
 <div class="nums">
-  {% if c.violation_to_trip_ms is not none %}<div class="num"><b>{{ "%.0f" | format(c.violation_to_trip_ms) }} ms</b><span>violation to trip</span></div>{% endif %}
+  {% if c.violation_to_trip_ms is not none %}<div class="num"><b>{{ "%.0f" | format(c.violation_to_trip_ms) }} ms</b><span>violation to trip</span></div>
+  {% elif c.activity_to_trip_s is not none %}<div class="num"><b>{{ "%.0f" | format(c.activity_to_trip_s) }} s</b><span>start of activity to trip</span></div>{% endif %}
   <div class="num"><b>{{ "%.0f" | format(c.trip_to_verified_ms) }} ms</b><span>trip to verified</span></div>
   <div class="num"><b>{% if c.trip_to_reset_s is not none %}{{ "%.0f" | format(c.trip_to_reset_s) }} s{% else %}not reset{% endif %}</b><span>trip to reset</span></div>
 </div>
@@ -51,15 +52,16 @@
 
 <h2>Timeline</h2>
 <div class="scroll"><table>
-<tr><th>Time (UTC)</th><th>Component</th><th>Actor</th><th>Action</th><th>Detail</th><th>Trace / span / decision</th></tr>
-{% for e in r.timeline %}
-<tr><td>{{ e.ts[11:23] }}</td><td>{{ e.component }}</td><td>{{ e.actor or "" }}</td>
-<td class="{{ 'block' if ('block' in e.action or 'trip' in e.action or 'denied' in e.action or 'quarantined' in e.action) else '' }}">{{ e.action }}</td>
-<td>{{ e.detail or "" }}</td><td class="ids">{{ e.trace_id or "" }}{% if e.span_id %} / {{ e.span_id }}{% endif %}{% if e.decision %}<br>{{ e.decision }}{% endif %}</td></tr>
+<tr><th>Time (UTC)</th><th>Component</th><th>Actor</th><th>Action</th><th>Detail</th><th>Trace, decision</th></tr>
+{% for e in rows %}
+<tr><td>{{ e.ts[11:23] }}{% if e.count > 1 %}<br><span class="ids">to {{ e.until[11:23] }}</span>{% endif %}</td><td>{{ e.component }}</td><td>{{ e.actor or "" }}</td>
+<td class="{{ 'block' if ('block' in e.action or 'trip' in e.action or 'denied' in e.action or 'quarantined' in e.action or 'halted' in e.action) else '' }}">{{ e.action }}</td>
+<td>{{ e.detail or "" }}</td><td class="ids" title="{{ e.trace_id or '' }}">{{ (e.trace_id or "")[:8] }}{% if e.decision %} {{ e.decision }}{% endif %}</td></tr>
 {% endfor %}
 </table></div>
 
 <h2>Integrity</h2>
+<p>Repeated steps are shown once with a count; report.json lists every entry with full trace, span and decision IDs.</p>
 <p>Audit chain: <span class="{{ 'ok' if r.integrity.audit_chain_valid else 'bad' }}">{{ r.integrity.audit_chain }}</span>.
 Guard policy version {{ r.configuration.guard_policy_version }}, code {{ r.configuration.git_sha[:12] }}{% if r.configuration.git_dirty %} (uncommitted changes){% endif %}.
 Every file in this bundle is listed with its SHA-256 in manifest.json; check it with <code>make evidence-verify</code>.</p>

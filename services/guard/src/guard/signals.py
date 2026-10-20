@@ -30,7 +30,9 @@ def heuristic(text: str) -> Signal:
 
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
-_PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+# Phone numbers in written formats (+1-555-0101, 555-123-4567), not any run of digits:
+# a looser pattern also caught dates inside incident ids.
+_PHONE = re.compile(r"\+\d{1,3}(?:[\s.-]\d{2,4}){2,4}\b|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b")
 # Two or three capitalised words: catches personal names; over-redacts some company
 # names, which is the safe direction for evidence.
 _NAME = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b")

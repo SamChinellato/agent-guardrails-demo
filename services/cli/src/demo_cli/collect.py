@@ -44,6 +44,30 @@ def loki_query(loki: str, query: str, start: float, end: float, limit: int = 500
     return sorted(out, key=lambda e: (e["ts_ns"], e["line"]))
 
 
+def settle(tempo: str, loki: str, trace_ids: list[str], decision_ids: list[str | None], start: float, say,
+           timeout: float = 20) -> None:
+    """Telemetry reaches Tempo and Loki a few seconds after the fact (OBS-06). Before
+    collecting, wait until every named trace and the trip's decision record are stored and
+    the traces have stopped growing, so a bundle made right after an incident is complete."""
+    deadline = time.monotonic() + timeout
+    sizes: dict[str, int] = {}
+    while time.monotonic() < deadline:
+        pending = []
+        for tid in trace_ids:
+            r = httpx.get(f"{tempo}/api/traces/{tid}", timeout=10)
+            n = sum(len(ss["spans"]) for b in r.json().get("batches", []) for ss in b["scopeSpans"]) if r.status_code == 200 else 0
+            if n == 0 or n != sizes.get(tid):
+                pending.append(tid)
+            sizes[tid] = n
+        for did in filter(None, decision_ids):
+            if not loki_query(loki, f'{{service_name="guard"}} | decision_id="{did}"', start - 60, time.time() + 1, 5):
+                pending.append(did)
+        if not pending:
+            return
+        time.sleep(2)
+    say("Some telemetry was still arriving; the bundle has what was stored after 20 s")
+
+
 def collect(target: str, kind: str, out: Path, say) -> dict:
     """kind: incident | trace. Returns what was collected (ids, window)."""
     raw = out / "raw"
@@ -82,23 +106,31 @@ def collect(target: str, kind: str, out: Path, say) -> dict:
             start, end = min(stamps), max(stamps)
             trace_ids = [target]
         w0, w1 = start - WINDOW_S, end + WINDOW_S
+        settle(tempo, loki, trace_ids, [e.get("decision_id") for e in events
+                                         if kind == "incident" and e.get("incident_id") == target], start, say)
 
-        # Guard decisions in the window for the incident's agents (block / flag) add their traces
-        selector = '{service_name="guard"} | json | event="guard_decision"'
-        # OTLP log fields arrive as structured metadata, i.e. stream labels; the line is the message
-        parsed = [d["labels"] for d in loki_query(loki, selector, w0, w1)]
-        relevant = [d for d in parsed if d.get("verdict") in ("block", "flag")
-                    and (kind == "trace" and d.get("trace_id") in trace_ids or kind == "incident" and d.get("agent") in agents)]
-        for d in relevant:
-            if d.get("trace_id"):
-                trace_ids.append(d["trace_id"])
-        if kind == "incident" and agents and len(set(trace_ids)) < 3:
-            # alert-driven trips carry no trace: take that agent's gateway traffic before the trip
-            access = loki_query(loki, '{service_name="apisix"} | json', start - 120, start + 5)
-            for a in access:
-                f = a["labels"]
-                if f.get("consumer") in agents and f.get("trace_id"):
-                    trace_ids.append(f["trace_id"])
+        # Guard decisions. A trip that names its trace (guard auto-trip) scopes the bundle to that
+        # trace; an alert-driven trip names none, so take that agent's activity in the 2 minutes
+        # before the trip. The +-10 min window is where these are searched for (7.9 step 1).
+        # Filter in LogQL, not afterwards: the window can hold thousands of routine "allow"
+        # records, and a client-side filter would stop at Loki's line limit (D-041).
+        named = set(trace_ids)
+        relevant: list[dict] = []
+        if named:
+            for tid in sorted(named):
+                relevant += [d["labels"] for d in loki_query(
+                    loki, f'{{service_name="guard"}} | trace_id="{tid}" | event="guard_decision"', w0, w1)]
+        else:
+            who = "|".join(sorted(agents))
+            relevant = [d["labels"] for d in loki_query(
+                loki, f'{{service_name="guard"}} | event="guard_decision" | agent=~"{who}" | verdict=~"block|flag"',
+                start - 120, start + 1)]
+            trace_ids += [d["trace_id"] for d in relevant if d.get("trace_id")]
+            if len(set(trace_ids)) < 3:
+                access = loki_query(loki, f'{{service_name="apisix"}} | json | consumer=~"{who}"', start - 120, start + 1)
+                trace_ids += [a["labels"]["trace_id"] for a in access if a["labels"].get("trace_id")]
+        relevant = [d for d in relevant if d.get("verdict") in ("block", "flag")]
+        incident_window = [start - 120, end]
         trace_ids = sorted(dict.fromkeys(t for t in trace_ids if t))[:MAX_TRACES]
         say(f"{len(trace_ids)} trace(s), window {time.strftime('%H:%M:%S', time.localtime(w0))}"
             f"–{time.strftime('%H:%M:%S', time.localtime(w1))}")
@@ -159,7 +191,8 @@ def collect(target: str, kind: str, out: Path, say) -> dict:
                 images[f"{ns}/{c['name']}"] = {"image": c["image"], "image_id": c["imageID"]}
     _write(raw / "environment.json", {"versions": versions, "git_sha": sha, "git_dirty": dirty,
                                       "images": dict(sorted(images.items()))})
-    meta = {"kind": kind, "target": target, "window": [w0, w1], "trace_ids": trace_ids, "agents": sorted(agents)}
+    meta = {"kind": kind, "target": target, "window": [w0, w1], "focus": incident_window,
+            "trace_ids": trace_ids, "agents": sorted(agents)}
     _write(raw / "request.json", meta)
     return meta
 

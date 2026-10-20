@@ -2,7 +2,7 @@
 
 Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and the test that proves it. Updated at the end of each phase.
 
-**Current phase:** P5 done (kill switch, alerting, S3–S6). Next: P6 (evidence bundle).
+**Current phase:** P6 done (evidence bundle). Next: P7 (hardening and handover).
 
 | ID | Requirement | Status | Test | Notes |
 | --- | --- | --- | --- | --- |
@@ -46,13 +46,13 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | KS-10 | Alert rules | DONE | `test_s4_guard_block_spike_trips_researcher_within_60s`, `test_s6_rogue_agent_stopped_by_anomaly_alert` | GuardBlockSpike, TokenBurn (50k/min), AgentToolCallSpike, GatewayErrorRate (D-037). |
 | KS-11 | In-flight requests | TODO | — | Behaviour implemented (non-streaming, one in-flight call per agent); RUNBOOK note in P7. |
 | KS-12 | Incidents | DONE | `test_trip_is_idempotent_verified_and_joins_incident` | Same target within 10 min joins the incident. |
-| EVD-01 | Command | TODO | — |  |
-| EVD-02 | Bundle contents | TODO | — |  |
-| EVD-03 | Report content | TODO | — |  |
-| EVD-04 | Redaction | TODO | — |  |
-| EVD-05 | Determinism | TODO | — |  |
-| EVD-06 | Verification | TODO | — |  |
-| EVD-07 | Framework placeholder | TODO | — |  |
+| EVD-01 | Command | DONE | `test_bundle_contents`, `test_evidence_by_trace` | `make evidence INCIDENT=…` or `TRACE=…` writes `evidence/<id>/`. |
+| EVD-02 | Bundle contents | DONE | `test_bundle_contents` | Layout in D-041; full audit chain included for verification. |
+| EVD-03 | Report content | DONE | `test_report_tells_the_s3_story` | Summary, containment metrics, ordered timeline. |
+| EVD-04 | Redaction | DONE | `test_no_secrets_and_excerpts_redacted` | Redacted excerpts and timeline; credentials removed; secret scan refuses to finish on a hit. |
+| EVD-05 | Determinism | DONE | `test_report_json_is_deterministic` | Generation time only in manifest.json. |
+| EVD-06 | Verification | DONE | `test_verify_passes`, `test_any_changed_byte_fails_verification`, `test_rehashed_manifest_cannot_hide_an_audit_edit` | Hashes, bundle hash and audit chain. |
+| EVD-07 | Framework placeholder | DONE | `test_report_tells_the_s3_story` | `control_refs: []` on every timeline entry. |
 | REP-01 | Single entry point | TODO | — |  |
 | REP-02 | Pinned versions | TODO | `make pin-check` | Images, charts, k3s, model and classifier revision pinned in `versions.env` (P0). Python `uv.lock` files arrive with each service (P1–P4). |
 | REP-03 | Built images | DONE | `make up` (build-images.sh) | Multi-stage, non-root, bases pinned by digest; tag rule for dirty trees in D-012. |

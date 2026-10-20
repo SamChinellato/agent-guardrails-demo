@@ -185,7 +185,11 @@ class Agent:
                 outcome, text, nested = await self.local_tools[name][1](args, scenario)
                 decision = None
             else:
-                r = await mcp.call(name, args)
+                try:
+                    r = await mcp.call(name, args)
+                except KillSwitchEngaged:
+                    span.set_attribute("mcp.decision", "halted")
+                    raise
                 outcome, text, decision = r.outcome, r.text, r.decision_id
             span.set_attribute("mcp.decision", outcome)
             if decision:

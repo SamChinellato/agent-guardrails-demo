@@ -69,7 +69,12 @@ def rebuild(bundle: Path) -> None:
 def verify(bundle: Path, say) -> bool:
     """EVD-06: every file matches the manifest, nothing extra or missing, the bundle hash
     matches, and the killswitch audit chain is intact."""
-    m = json.loads((bundle / "manifest.json").read_text())
+    try:
+        m = json.loads((bundle / "manifest.json").read_text())
+    except (OSError, ValueError) as e:
+        say(f"manifest.json unreadable: {e}")
+        say("Evidence bundle FAILED verification")
+        return False
     ok = True
     actual = {str(p.relative_to(bundle)): sha256(p) for p in files(bundle)}
     for path in sorted(set(m["files"]) | set(actual)):
