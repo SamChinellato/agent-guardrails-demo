@@ -178,6 +178,46 @@ async def cascade() -> list[dict]:
     return steps
 
 
+async def coastal_cascade(text: str) -> list[dict]:
+    """Chat cascade (D-044): an exfiltration request written as an ordinary audit task passes
+    content scanning; the executor's tool call is what the gateway stops."""
+    await preconditions()
+    start = time.time()
+    steps = [await task(text, "coastal:scripted")]
+    await asyncio.sleep(1)
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
+              for e in await kill_events(start)]
+    return steps
+
+
+async def meridian(text: str) -> list[dict]:
+    await preconditions()
+    return [await task(text, "meridian:scripted")]
+
+
+async def rogue_chat(text: str) -> list[dict]:
+    steps = waited(await alerts_clear(("AgentToolCallSpike", "TokenBurn")))
+    await preconditions()
+    start = time.time()
+    steps.append(await task(text, "s6-rogue:scripted", chat=True, max_steps=120))
+    await asyncio.sleep(1)
+    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"]}
+              for e in await kill_events(start)]
+    return steps
+
+
+# Story prompts typed in the chat (D-044). Anything else is ordinary live chat.
+TRIGGERS = [
+    (re.compile(r"\bcoastal\b", re.I), coastal_cascade),
+    (re.compile(r"\bmeridian\b", re.I), meridian),
+    (re.compile(r"\b(keep|continue) (re-?reading|re-?checking|reading|checking)\b|\buntil i (tell|say)\b", re.I), rogue_chat),
+]
+
+
+def trigger_for(text: str):
+    return next((fn for pattern, fn in TRIGGERS if pattern.search(text)), None)
+
+
 async def repeated_attacks() -> list[dict]:
     steps = waited(await alerts_clear(("GuardBlockSpike",)))
     await preconditions()

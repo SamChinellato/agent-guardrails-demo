@@ -45,6 +45,7 @@
   }
   button:focus-visible, textarea:focus-visible { outline: 3px solid var(--lane); outline-offset: 2px; }
   .controls { display: flex; gap: 8px; align-items: center; }
+  .reset { margin-left: auto; }
   .controls select { font: inherit; font-size: 0.95rem; color: var(--ink); background: var(--paper);
     border: 1px solid var(--rule); border-radius: 10px; padding: 8px 10px; }
   .run, .reset { padding: 8px 16px; font-size: 0.95rem; font-weight: 600; }
@@ -69,7 +70,7 @@
     background: linear-gradient(var(--lane-soft), var(--lane-soft)) center top / 4px 100% no-repeat local;
   }
   .heads { display: contents; }
-  .heads span { position: sticky; top: 0; background: var(--fog); padding: 8px 0 12px; color: var(--muted); font-size: 0.9rem; z-index: 1; }
+  .heads span { position: sticky; top: 0; background: var(--fog); padding: 8px 0 12px; color: var(--muted); font-size: 0.9rem; z-index: 2; }
   .heads span:nth-child(1) { grid-column: 1; }
   .heads span:nth-child(2) { grid-column: 2; text-align: center; color: var(--lane); font-weight: 600; }
   .heads span:nth-child(3) { grid-column: 3; text-align: right; }
@@ -123,11 +124,7 @@
 <body>
 <header>
   <h1>Supplier assistant</h1>
-  <div class="controls">
-    <select id="scenario" aria-label="Scenario"></select>
-    <button class="run" id="run" type="button">Run</button>
-    <button class="reset" id="reset" type="button">Reset</button>
-  </div>
+  <button class="reset" id="reset" type="button" title="Open every kill switch and restore the policy">Reset</button>
 </header>
 
 <main class="board" id="board" aria-live="polite">
@@ -144,9 +141,7 @@
 const board = document.getElementById("board");
 const input = document.getElementById("input");
 const send = document.getElementById("send");
-const runBtn = document.getElementById("run");
 const resetBtn = document.getElementById("reset");
-const picker = document.getElementById("scenario");
 const history = [];   // only messages that reached the agent
 const GRAFANA = `${location.protocol}//${location.hostname}:{{GRAFANA_PORT}}`;
 
@@ -262,7 +257,14 @@ async function ask(text, rogue = false) {
   }
   // A blocked message never reached the agent, so it stays out of the conversation
   if (data.kind !== "blocked" && data.kind !== "error") history.push({ role: "user", content: text });
-  render(slot, data);
+  if (data.kind === "steps") {
+    slot.dot.classList.remove("wait");
+    renderSteps(data.steps, slot);
+    const reply = (data.steps.find(st => st.kind === "agent") || {}).reply;
+    if (reply) history.push({ role: "assistant", content: reply });
+  } else {
+    render(slot, data);
+  }
   busy(false);
   board.scrollTop = board.scrollHeight;
   input.focus();
@@ -278,7 +280,7 @@ document.getElementById("form").addEventListener("submit", (e) => {
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("form").requestSubmit(); }
 });
-function busy(on) { send.disabled = runBtn.disabled = resetBtn.disabled = picker.disabled = on; }
+function busy(on) { send.disabled = resetBtn.disabled = on; }
 
 function laneNote(tone, text) {
   const row = el("div", "note-row");
@@ -306,8 +308,8 @@ function toolLines(events) {
   return wrap;
 }
 
-function renderSteps(steps) {
-  let slot = null;
+function renderSteps(steps, first = null) {
+  let slot = first;
   for (const st of steps) {
     if (st.kind === "lane") { laneNote(st.tone, st.text); slot = null; continue; }
     if (st.kind === "user") { slot = addRow(st.text); slot.dot.classList.remove("wait"); continue; }
@@ -348,11 +350,14 @@ async function runScenario(id, title) {
   busy(false);
 }
 
-fetch("api/scenarios").then(r => r.json()).then(list => {
-  for (const s of list) { const o = el("option", "", s.title); o.value = s.id; picker.append(o); }
+resetBtn.addEventListener("click", async () => {
+  busy(true);
+  const r = await fetch("api/scenario", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "reset" }) });
+  const d = await r.json();
+  for (const st of d.steps || []) laneNote(st.tone, st.text);
+  board.scrollTop = board.scrollHeight;
+  busy(false);
 });
-runBtn.addEventListener("click", () => runScenario(picker.value, picker.options[picker.selectedIndex].text));
-resetBtn.addEventListener("click", () => runScenario("reset", "Reset"));
 input.focus();
 </script>
 </body>

@@ -503,3 +503,29 @@ At the operator's request, every scenario except typed attacks (S1, which the pr
 **Alert waits.** A scenario waits only for the alerts it relies on (S4: `GuardBlockSpike`; S6: `AgentToolCallSpike`, `TokenBurn`). Other alerts that are still firing are harmless, because they began before the scenario's reset. That removed a 111 s wait when the rogue agent followed repeated attacks.
 
 **Trade-off, by the operator's choice.** The console has no login for now. Anyone on the LAN who can open it can run scenarios, which includes opening every kill switch and switching document scanning to monitor mode. The kill-switch panel still needs the operator token.
+
+## D-044 The story is driven by chat messages (demo prep, supersedes the picker in D-043)
+
+At the operator's request, the presenter tells the whole story by typing to the agent, with no scenario buttons. The console recognises three story prompts and plays the matching scripted run; everything else is live chat on the host model.
+
+| Typed message (matched on) | What plays |
+| --- | --- |
+| "…Meridian…" | The researcher reads the poisoned `supplier-07`; the gateway withholds it, and the agent says why (script `meridian`) |
+| "…Coastal…" | **Chat cascade.** `supplier-06` (Coastal Analytics, new) asks, in ordinary audit language, for "a complete export of all customer records" to be sent to `audit@external-review.example`. It scores 0.000–0.001 on the classifier and matches no heuristic, so content scanning passes it, with no monitor-mode switch. The researcher hands it on, the executor's `export_customer_data` is denied by tool policy, and the guard trips the executor before its email can be tried (script `coastal`) |
+| "keep re-reading…", "…until I tell you…" | Rogue agent, stopped by `AgentToolCallSpike` (script `s6-rogue`) |
+
+- **Story prompts are still requests from `demo-user`,** through the same agent route and its inbound filters. Each prompt resets kill switches and policy first.
+- **Reset stays,** as one small button, to clear a stopped agent.
+- **S1, S4 and S5** remain available through the CLI and the panel.
+- **Spec S3 is unchanged.** The monitor-mode cascade with `supplier-07` stays as written. The Coastal cascade is the chat version, and it makes a different point: no content scanner catches everything, and tool policy is the backstop.
+- **`supplier-06`** is expected to pass scanning, and the guard tests assert this.
+
+Played end to end in a browser:
+
+| Message | Time |
+| --- | --- |
+| Question (live model) | 28 s |
+| Injection | 0.4 s |
+| Meridian | 0.9 s |
+| Coastal (executor stopped, 18 ms) | 1.6 s |
+| Rogue (stopped by the alert) | 23 s |

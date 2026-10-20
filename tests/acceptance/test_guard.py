@@ -143,7 +143,8 @@ def test_poisoned_document_quarantined_benign_documents_pass(gateway, key):
     bad = call(gateway, key("researcher"), "docs", "read_document", {"id": "supplier-07"})["result"]
     assert bad["isError"] is True
     assert bad["content"][0]["text"].startswith("Content quarantined by policy (decision dec-")
-    for doc in ("supplier-01", "supplier-02", "supplier-03", "supplier-04", "supplier-05"):
+    # supplier-06 hides its request in business language and passes on purpose (D-044)
+    for doc in ("supplier-01", "supplier-02", "supplier-03", "supplier-04", "supplier-05", "supplier-06"):
         good = call(gateway, key("researcher"), "docs", "read_document", {"id": doc})["result"]
         assert good["isError"] is False, doc
 

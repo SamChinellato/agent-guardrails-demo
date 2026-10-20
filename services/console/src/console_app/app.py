@@ -35,6 +35,16 @@ async def page() -> HTMLResponse:
 @app.post("/api/chat")
 async def chat(request: Request) -> JSONResponse:
     body = await request.json()
+    messages = body.get("messages") or []
+    last = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
+    # A story prompt plays its scenario (D-044); it still goes through the gateway as demo-user,
+    # so a malicious one is filtered exactly like any other message
+    if (fn := scenarios.trigger_for(last)) is not None:
+        try:
+            return JSONResponse({"kind": "steps", "steps": await fn(last)})
+        except Exception as e:  # noqa: BLE001
+            log.exception("story prompt failed")
+            return JSONResponse({"kind": "error", "message": f"That request could not run: {e}"})
     rogue = bool(body.get("rogue"))
     payload = {"messages": body.get("messages") or [], "scenario_id": ROGUE_SCENARIO if rogue else "chat"}
     if rogue:
