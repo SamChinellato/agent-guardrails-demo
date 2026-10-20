@@ -37,7 +37,10 @@ spec:
             - {name: MODEL_DIR, value: /models/onnx}
             - {name: POLICY_FILE, value: /policy/policy.yaml}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
-            # KILLSWITCH_URL / KILLSWITCH_TOKEN arrive with the killswitch in P5 (GRD-06)
+            # Auto-trip (GRD-06, F5)
+            - {name: KILLSWITCH_URL, value: "http://killswitch.gateway.svc.cluster.local:8000"}
+            - name: KILLSWITCH_TOKEN
+              valueFrom: {secretKeyRef: {name: killswitch-guard, key: token}}
           ports:
             - {name: http, containerPort: 8000}
           readinessProbe:          # ready only after model load + policy parse (GRD-08)

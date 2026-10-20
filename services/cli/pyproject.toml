@@ -3,7 +3,7 @@ name = "cli"
 version = "0.1.0"
 description = "Host-side demo runner (make demo) and, from P6, the evidence tools"
 requires-python = "==3.12.*"
-dependencies = ["httpx>=0.28,<0.29", "pyyaml>=6.0,<7"]
+dependencies = ["httpx>=0.28,<0.29", "pyyaml>=6.0,<7", "jinja2>=3.1,<4"]
 
 [project.scripts]
 demo = "demo_cli.runner:main"

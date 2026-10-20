@@ -28,7 +28,7 @@ TOKENS = Counter("agent_llm_tokens_total", "LLM tokens used, as reported by the 
 TOOL_CALLS = Counter("agent_tool_calls_total", "Tool calls by outcome", ["agent", "tool", "outcome"])
 TASKS = Counter("agent_tasks_total", "Tasks by final status", ["agent", "status"])
 
-MAX_STEPS_CAP = 60
+MAX_STEPS_CAP = 150  # ATK-04: a scenario may raise the step limit
 
 
 @dataclass

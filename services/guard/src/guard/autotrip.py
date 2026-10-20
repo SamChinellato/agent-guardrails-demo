@@ -1,6 +1,7 @@
 """Auto-trip (GRD-06, F5): a critical violation in enforce mode asks the killswitch to trip
 scope agent:<id>. De-duplicated per agent for auto_trip.dedupe_seconds (default 60).
-Runs on a background thread so the blocked request is answered immediately.
+The trip completes before the blocked request is answered (capped at 3 s), so the agent's
+very next call already meets the kill switch (D-038). The engine runs off the event loop.
 
 Until the killswitch exists (P5), KILLSWITCH_URL is unset and trips are only logged.
 """
@@ -41,8 +42,12 @@ class AutoTrip:
                 log.info("auto-trip suppressed (dedupe)", extra={"scope": scope, "decision_id": d.decision_id})
                 return
             self._last[scope] = now
-        ctx = otel_context.get_current()
-        threading.Thread(target=self._trip, args=(scope, d, ctx), daemon=True).start()
+        self._trip(scope, d, otel_context.get_current())
+
+    def clear(self) -> None:
+        """Forget de-duplication state (make reset), so the next run trips again."""
+        with self._lock:
+            self._last.clear()
 
     def _trip(self, scope: str, d: Decision, ctx) -> None:
         token = otel_context.attach(ctx)
@@ -60,7 +65,7 @@ class AutoTrip:
                 return
             with tracer.start_as_current_span("guard.auto_trip", attributes={"killswitch.scope": scope}):
                 r = httpx.post(
-                    f"{self.url}/v1/trip", json=body, headers={"Authorization": f"Bearer {self.token}"}, timeout=5
+                    f"{self.url}/v1/trip", json=body, headers={"Authorization": f"Bearer {self.token}"}, timeout=3
                 )
             log.warning(
                 "auto-trip sent",

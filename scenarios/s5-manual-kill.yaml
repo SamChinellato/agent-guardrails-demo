@@ -1,0 +1,10 @@
+id: s5
+title: Manual global kill and reset
+story: The operator pulls the global kill switch in the middle of a task. Every LLM, tool and agent call is refused at once; after the reset, service is restored.
+kind: manual-kill
+policy: {}
+trip_after_s: 2.5
+request:
+  agent: researcher
+  instruction: Review the supplier documents and hand any follow-up actions to the executor.
+show: [Incident, AI Gateway Overview]

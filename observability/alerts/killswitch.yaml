@@ -1,0 +1,62 @@
+# Alert rules (KS-10, DEMO-03). Evaluated every 5 s. Alerts carrying killswitch_scope are
+# sent by Alertmanager to the killswitch, which trips that scope (F6). Agent labels come
+# from what the gateway measured, so a misbehaving agent cannot under-report itself.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: killswitch
+  namespace: observability
+spec:
+  groups:
+    - name: killswitch
+      interval: 5s
+      rules:
+        # 3 or more enforce-mode guard blocks for one agent within 2 minutes (KS-10). Only blocks
+        # of what the agent itself sends count: an agent that reads a poisoned document is being
+        # attacked, not misbehaving, and is not suspended for it (D-037).
+        - alert: GuardBlockSpike
+          expr: |
+            sum by (agent) (increase(guard_decisions_total{mode="enforce", verdict="block", agent=~"researcher|executor",
+                check=~"llm.user_prompt_injection|mcp.tool_allowlist|mcp.argument_rules"}[2m])) >= 3
+          labels:
+            severity: critical
+            killswitch_scope: 'agent:{{ $labels.agent }}'
+          annotations:
+            summary: '{{ $labels.agent }} hit {{ printf "%.0f" $value }} guard blocks in 2 minutes'
+
+        # Token use above TOKEN_BURN_PER_MIN for 1 minute (KS-10). 50000, not the spec's example
+        # 3000: a normal S0 uses ~11k tokens/min live and ~15k in its scripted burst, because
+        # every step resends the documents; the rogue loop uses 250k+ (D-037).
+        - alert: TokenBurn
+          expr: |
+            sum by (consumer) (rate(apisix_llm_prompt_tokens{consumer=~"researcher|executor"}[1m])
+                             + rate(apisix_llm_completion_tokens{consumer=~"researcher|executor"}[1m])) * 60 > 50000
+          for: 1m
+          labels:
+            severity: critical
+            killswitch_scope: 'agent:{{ $labels.consumer }}'
+          annotations:
+            summary: '{{ $labels.consumer }} is using {{ printf "%.0f" $value }} tokens per minute'
+
+        # DEMO-03: tool calls far above any normal task (S0 makes 6 in total, about 12/min in a
+        # 20 s window), sustained for 5 s. Fast enough to stop a runaway agent on stage (D-037).
+        - alert: AgentToolCallSpike
+          expr: |
+            sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*", consumer=~"researcher|executor"}[20s])) * 60 > 40
+          for: 5s
+          labels:
+            severity: critical
+            killswitch_scope: 'agent:{{ $labels.consumer }}'
+          annotations:
+            summary: '{{ $labels.consumer }} is making {{ printf "%.0f" $value }} tool calls per minute'
+
+        # Notify only: gateway errors other than deliberate kill-switch 503s
+        - alert: GatewayErrorRate
+          expr: |
+            sum(rate(apisix_http_status{code=~"5..", code!="503"}[2m]))
+              / clamp_min(sum(rate(apisix_http_status[2m])), 1e-9) > 0.2
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Gateway 5xx rate is {{ $value | humanizePercentage }}'

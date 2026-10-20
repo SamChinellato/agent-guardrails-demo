@@ -22,7 +22,7 @@ AGENT_COLORS = {"researcher": "#3987e5", "executor": "#d95926", "probe": "#199e7
 # Status colours, reserved for states
 GOOD, WARN, CRIT, NEUTRAL = "#1a9e5c", "#c98500", "#e5484d", "#8e8c84"
 
-TOKEN_BURN_PER_MIN = 3000  # KS-10 default; keep in sync with observability/alerts
+TOKEN_BURN_PER_MIN = 50000  # keep in sync with observability/alerts/killswitch.yaml (D-037)
 
 
 class Layout:

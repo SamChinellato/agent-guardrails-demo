@@ -13,7 +13,7 @@ metrics:
 
 resources:
   requests: {cpu: 100m, memory: 256Mi}
-  limits: {cpu: "1", memory: 512Mi}
+  limits: {cpu: "2", memory: 1Gi}
 
 service:
   type: NodePort
@@ -32,6 +32,11 @@ control:
 apisix:
   enableIPv6: false
   enableServerTokens: false
+
+  nginx:
+    # The chart's "auto" starts one worker per host core (20 here); with the AI plugins that
+    # outgrew the memory limit and APISIX was OOM-killed under test load (D-040).
+    workerProcesses: 2
 
   deployment:
     mode: traditional

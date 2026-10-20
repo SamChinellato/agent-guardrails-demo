@@ -90,6 +90,7 @@ render_manifest() {
       -e "s|\${MCP_ACTIONS_IMAGE}|$REGISTRY_PULL/mcp-actions:$MCP_ACTIONS_TAG|g" \
       -e "s|\${AGENTS_IMAGE}|$REGISTRY_PULL/agents:$AGENTS_TAG|g" \
       -e "s|\${CONSOLE_IMAGE}|$REGISTRY_PULL/console:$CONSOLE_TAG|g" \
+      -e "s|\${KILLSWITCH_IMAGE}|$REGISTRY_PULL/killswitch:$KILLSWITCH_TAG|g" \
       -e "s|\${LLM_MODEL}|$llm_model|g" \
       -e "s|\${HOST_PORT_GRAFANA}|$HOST_PORT_GRAFANA|g" "$1"
 }
@@ -122,27 +123,43 @@ for lua in "$ROOT"/gateway/plugins/*.lua; do
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 done
 kubectl -n gateway delete configmap apisix-custom-plugins --ignore-not-found >/dev/null
-# subPath mounts don't follow ConfigMap updates: a checksum annotation rolls the pod on change
+# subPath mounts don't follow ConfigMap updates: a checksum annotation rolls the pod on change.
+# wait-etcd: a new pod's NetworkPolicy allow can lag its start (D-036), so wait for etcd
+# instead of crash-looping once.
 plugins_sha="$(cat "$ROOT"/gateway/plugins/*.lua | sha256sum | cut -c1-16)"
+wait_etcd="$(jq -cn --arg image "$(pinned_ref APISIX)" '[{
+  name: "wait-etcd", image: $image,
+  command: ["bash", "-c", "for i in $(seq 60); do (exec 3<>/dev/tcp/etcd.gateway.svc.cluster.local/2379) 2>/dev/null && exit 0; sleep 1; done; exit 1"],
+  resources: {requests: {cpu: "10m", memory: "16Mi"}, limits: {cpu: "100m", memory: "64Mi"}},
+  securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
+}]')"
 helm_install apisix gateway apisix APISIX "$ROOT/deploy/helm-values/apisix.yaml" \
   --set "image.tag=${APISIX_IMAGE##*:}@$APISIX_DIGEST" \
-  --set "podAnnotations.demo/custom-plugins-sha=$plugins_sha"
+  --set "podAnnotations.demo/custom-plugins-sha=$plugins_sha" \
+  --set-json "extraInitContainers=$wait_etcd"
 kubectl -n gateway rollout status deployment/apisix --timeout=300s >/dev/null
 
 # ---------------------------------------------------------------- gateway config
 "$ROOT/scripts/bootstrap-gateway.sh"
+
+log "killswitch"
+render_manifest "$ROOT/deploy/manifests/40-killswitch.yaml" | kubectl apply -f - >/dev/null
+kubectl -n gateway rollout status deployment/killswitch --timeout=180s >/dev/null
+
 "$ROOT/scripts/smoke.sh"
 
 lan=""
 if [[ "$HOST_BIND" == 0.0.0.0 ]]; then
   ip="$( (hostname -I 2>/dev/null || ipconfig getifaddr en0 2>/dev/null) | awk '{print $1}')"
-  [[ -n "$ip" ]] && lan="  From the LAN: http://$ip:$HOST_PORT_GATEWAY (gateway), http://$ip:$HOST_PORT_GRAFANA (Grafana)"
+  [[ -n "$ip" ]] && lan="  From the LAN: http://$ip:$HOST_PORT_GATEWAY/console, http://$ip:$HOST_PORT_GRAFANA (Grafana), http://$ip:$HOST_PORT_PANEL (kill switch)"
 fi
 cat <<EOF
 
 Demo is up (LLM_MODE=$LLM_MODE, runtime=$CONTAINER_RUNTIME).
   Gateway:     http://localhost:$HOST_PORT_GATEWAY
   Grafana:     http://localhost:$HOST_PORT_GRAFANA  (anonymous viewer; admin password in .secrets/grafana-admin-password)
+  Console:     http://localhost:$HOST_PORT_GATEWAY/console
+  Kill switch: http://localhost:$HOST_PORT_PANEL  (operator token: cat .secrets/killswitch-operator-token)
   KUBECONFIG:  $KUBECONFIG
   Secrets:     $ROOT/.secrets/ (mode 600)
 $lan

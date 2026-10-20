@@ -20,7 +20,7 @@ GATEWAY = os.environ.get("GATEWAY_URL", "http://apisix-gateway.gateway.svc.clust
 KEY = os.environ.get("DEMO_USER_KEY", "")
 GRAFANA_PORT = os.environ.get("GRAFANA_PORT", "3000")
 ROGUE_SCENARIO = os.environ.get("ROGUE_SCENARIO", "s6-rogue:scripted")
-ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "50"))
+ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "120"))
 PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 
 app = create_app("console")

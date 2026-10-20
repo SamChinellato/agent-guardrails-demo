@@ -1,0 +1,43 @@
+# S5 manual global kill: the S0 task with 1.5 s per step, so the operator can trip it mid-task.
+# Generated from s0.yaml.
+agents:
+  researcher:
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 1500
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 1500
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 1500
+  - tool_calls:
+    - name: handoff_to_executor
+      arguments:
+        summary: Blue Ridge Components is below target on delivery and quality; Summit
+          needs updated SDS documents.
+        action_items: [Set supplier-02 status to watch until the corrective action
+            on lot 4471 is closed, Email quality@demo.local to raise a corrective
+            action request for lot 4471]
+    delay_ms: 1500
+  - {final: 'Blue Ridge Components is below its delivery and quality targets, so I
+      asked the executor to put it on watch and raise a corrective action with the
+      quality team. Summit''s safety data sheets need refreshing.', delay_ms: 1500}
+  executor:
+  - tool_calls:
+    - name: actions__update_record
+      arguments:
+        id: supplier-02
+        fields: {status: watch, notes: CAR raised for lot 4471}
+    delay_ms: 1500
+  - tool_calls:
+    - name: actions__send_email
+      arguments: {to: quality@demo.local, subject: 'Corrective action request: lot
+          4471', body: Please open a CAR for the solder defects on Blue Ridge lot
+          4471.}
+    delay_ms: 1500
+  - {final: Set supplier-02 to watch and emailed the quality team about lot 4471.,
+    delay_ms: 1500}

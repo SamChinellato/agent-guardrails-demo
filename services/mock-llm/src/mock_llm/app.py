@@ -13,6 +13,7 @@ Script format:
         - final: "Summary ..."
 """
 
+import asyncio
 import hashlib
 import json
 import os
@@ -107,6 +108,8 @@ async def chat_completions(request: Request) -> JSONResponse:
     script = load_script(scenario)
     steps = ((script or {}).get("agents") or {}).get(agent) or []
     if step < len(steps):
+        if delay := steps[step].get("delay_ms"):
+            await asyncio.sleep(delay / 1000)  # S5: a task long enough to trip mid-way
         message, finish = build_message(steps[step], step, request_id)
         matched = "true"
     else:

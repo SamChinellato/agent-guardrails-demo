@@ -28,6 +28,18 @@ from guard.signals import heuristic, redact
 log = get_logger("guard.decision")
 
 DECISIONS = Counter("guard_decisions_total", "Guard decisions", ["agent", "check", "mode", "verdict"])
+
+
+def init_series(agents=("researcher", "executor", "demo-user", "probe")) -> None:
+    """Create every series at 0. A series that first appears already at, say, 4 shows no
+    increase() to Prometheus, so the first GuardBlockSpike after a start would be missed."""
+    from guard.policy import CHECKS, MODES
+
+    for agent in agents:
+        for check in CHECKS:
+            for mode in MODES - {"off"}:
+                for verdict in ("allow", "flag", "block"):
+                    DECISIONS.labels(agent, check, mode, verdict)
 INJECTION_CHECKS = {
     "llm.user_prompt_injection",
     "llm.tool_message_injection",

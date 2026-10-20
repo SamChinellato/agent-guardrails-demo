@@ -373,3 +373,49 @@ Under normal load, a new pod's NetworkPolicy rules are programmed about 60 ms af
 - **Demo workloads are long-running,** so the window only applies at pod start.
 - **Tests check coverage, then correctness.** They first wait, up to 15 s, until an in-cluster call that policy must refuse is refused. That proves the pod's rules exist; if it never happens the test fails. Only then do they assert the property, such as no internet.
 - **`make up`** runs `verify-netpol.sh` the same way. This is recorded under NFR-08 as a known limitation.
+
+## D-037 Alert rules, thresholds and the Alertmanager re-trip rule (P5)
+
+| Alert | Rule | Scope label | Why this shape |
+| --- | --- | --- | --- |
+| `GuardBlockSpike` | ≥ 3 enforce blocks for one agent in 2 min | `agent:<agent>` | Spec (KS-10). Counts only blocks of what the agent **sends** (`llm.user_prompt_injection`, `mcp.tool_allowlist`, `mcp.argument_rules`), so an agent that *reads* a poisoned document, and is the victim, isn't suspended for it |
+| `TokenBurn` | gateway-measured tokens > **50,000/min** for 1 min | `agent:<consumer>` | The spec's example of 3,000 is below normal use for this design: S0 uses about 11k/min live and about 15k in its scripted burst, because each step resends the documents. The rogue loop uses 250k+/min. The spec makes the threshold configurable |
+| `AgentToolCallSpike` | MCP calls > 40/min over 20 s, for 5 s | `agent:<consumer>` | DEMO-03, an addition to the spec. Normal tasks make about 6 calls in total, about 12/min in a window. Measured on S6: tripped 22 s into the run, verified in 25 ms. Within KS-05's 60 s alert-driven bound |
+| `GatewayErrorRate` | non-503 5xx > 20% for 1 min | none | Notify only. Deliberate kill-switch 503s are excluded |
+
+- **Data sources.** All agent labels come from the gateway's own metrics (`apisix_*`) or the guard's, never from what the agents report about themselves.
+- **Counter series start at 0.** The guard creates every `guard_decisions_total` series at 0 on startup. A series that first appears already at 4 shows no `increase()`, so the first GuardBlockSpike after a restart was missed. That was found by a failing S4.
+- **Alertmanager** sends alerts carrying `killswitch_scope` to the killswitch webhook, using a bearer token from a mounted Secret (KS-09). It has `group_wait 5s` and `repeat_interval 1m`. Repeats are harmless: the killswitch is idempotent and records them with `no_change: true`, and the panel hides them.
+- **The re-trip rule.** An alert whose `startsAt` is before that scope's last reset is not acted on again. Otherwise a still-firing alert would undo an operator's reset a minute later.
+- **Waiting for alerts to settle.** Alert-driven scenarios and `make reset` wait until no kill-switch alert is firing **or pending**. Otherwise leftovers from earlier activity could trip an agent during the next run.
+
+## D-038 Guard auto-trip completes before the denial is returned (P5)
+
+The first S3 run showed a race. The trip ran on a background thread, and the scripted executor's next call (the email) arrived about 2 ms later, before the kill landed, so it was merely denied. Now, for a critical block in enforce mode, the guard finishes the trip, capped at 3 s (KS-05), *before* answering the blocked request. It runs in the threadpool, so other requests aren't held up. The executor's next call meets the kill switch and the agent halts. Measured: trip verified in 20–21 ms.
+
+## D-039 Kill-switch state markers and verification (P5)
+
+- **Scope markers in APISIX.** `global` and `tools` both need `pc-mcp`, so each plugin config records which scopes hold it in labels (`killswitch.global`, `killswitch.tools`). Fault injection stays on while any label remains. Verified: resetting `global` while `tools` is tripped leaves MCP blocked and LLM restored (`test_tools_stays_tripped_when_global_is_reset`). PATCH with a `null` label removes it, tested on 3.19. `bootstrap-gateway.sh` preserves both the labels and an agent's `agent-kill-switch` during an incident.
+- **Verification (KS-04).** After every change the killswitch reads the state back from APISIX and sends a probe through the data plane as consumer `probe`: the LLM route for `global`, an MCP `tools/list` for `tools`. Agent scope is read-back only, as the spec says. It retries for up to 5 s, then records `verified: false` and answers 500.
+- **Measured latencies:**
+
+  | Change | Latency |
+  | --- | --- |
+  | Manual global trip | 38 ms |
+  | Global reset | 76 ms |
+  | Agent trip from an alert | 25–36 ms |
+  | Guard auto-trip | 20 ms |
+
+  The manual bound in the tests is 2 s from trip to 503.
+- **Audit log (KS-07).** One JSON event per line on a PVC, each carrying `prev_hash` and its own `hash` (SHA-256 over canonical JSON). `make reset` archives the file and starts a new chain. Repeat trips are recorded with `no_change: true` (KS-03).
+- **Smoke test.** The `make up` smoke step uses the `probe` consumer, so an agent kill left over from a demo doesn't fail the install, while an engaged global kill is reported clearly.
+
+## D-040 APISIX worker count, and waiting for etcd at start (P5)
+
+**Finding.** One full-suite run in four failed with `Server disconnected without sending a response`. The test was fine: APISIX had been **OOM-killed 7 times**. The chart's `workerProcesses: auto` starts one nginx worker per host core, 20 on this laptop. With the AI plugins loaded, that used about 370 MiB at idle and went past the 512 MiB limit under test load. Each restart dropped in-flight requests.
+
+**Fix.**
+- `apisix.nginx.workerProcesses: 2`, plenty for a single-node demo. Idle memory fell to 58 MiB.
+- The limit was raised to 1 GiB, 2 CPUs, for headroom.
+
+**Related.** A new APISIX pod can start before kube-router has programmed its allow rule to etcd (D-036). It then fails its first etcd check and restarts once. A `wait-etcd` init container, using the same pinned APISIX image and bash's `/dev/tcp` (the image has no curl), waits up to 60 s for etcd instead.

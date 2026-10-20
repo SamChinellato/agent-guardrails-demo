@@ -1,27 +1,27 @@
-"""make demo SCENARIO=<id>: run one scenario through the gateway with narrated output.
+"""Demo runner (make demo / demo-all / trip / kill-reset / reset / status).
 
-Each scenario first sets its guard policy (every check back to policy/policy.yaml, then the
-scenario's overrides) and waits until the guard reports the new version. Requests go in as
-the operator would send them: demo-user -> APISIX -> researcher (F1).
+A scenario first resets its own preconditions (kill switches open, guard memory clear,
+its policy modes), then talks to the gateway exactly as an operator would: demo-user ->
+APISIX -> researcher (F1). Output is a short narration plus a trace id per run.
 """
 
 import argparse
+import json
 import os
-import re
-import subprocess
 import sys
+import threading
 import time
-from pathlib import Path
+import urllib.parse
 
 import httpx
 import yaml
 
-ROOT = Path(__file__).resolve().parents[4]
-KUBECTL = str(ROOT / ".tools/bin/kubectl") if (ROOT / ".tools/bin/kubectl").exists() else "kubectl"
-KUBECONFIG = os.environ.get("KUBECONFIG_DEMO") or str(ROOT / ".kube/config")
+from demo_cli import ops
+
+ROOT = ops.ROOT
 
 
-def env_local(name: str, default: str) -> str:
+def setting(name: str, default: str) -> str:
     if os.environ.get(name):
         return os.environ[name]
     f = ROOT / ".env.local"
@@ -32,8 +32,8 @@ def env_local(name: str, default: str) -> str:
     return default
 
 
-GATEWAY = f"http://127.0.0.1:{env_local('HOST_PORT_GATEWAY', '8080')}"
-GRAFANA = f"http://localhost:{env_local('HOST_PORT_GRAFANA', '3000')}"
+GATEWAY = f"http://127.0.0.1:{setting('HOST_PORT_GATEWAY', '8080')}"
+GRAFANA = f"http://localhost:{setting('HOST_PORT_GRAFANA', '3000')}"
 BOLD, DIM, RED, GREEN, BLUE, RESET = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[34m", "\033[0m"
 
 
@@ -41,8 +41,14 @@ def say(text: str = "", colour: str = "") -> None:
     print(f"{colour}{text}{RESET}" if colour else text, flush=True)
 
 
-def kubectl(*args: str, **kw) -> subprocess.CompletedProcess:
-    return subprocess.run([KUBECTL, "--kubeconfig", KUBECONFIG, *args], capture_output=True, text=True, **kw)
+def note(text: str) -> None:
+    say(text, DIM)
+
+
+def trace_url(trace_id: str) -> str:
+    panes = {"a": {"datasource": "tempo", "queries": [{"refId": "A", "queryType": "traceql", "query": trace_id}],
+                   "range": {"from": "now-1h", "to": "now"}}}
+    return f"{GRAFANA}/explore?schemaVersion=1&panes={urllib.parse.quote(json.dumps(panes))}"
 
 
 def find_scenario(sid: str) -> dict:
@@ -53,133 +59,253 @@ def find_scenario(sid: str) -> dict:
     sys.exit(f"no scenario {sid!r} in scenarios/")
 
 
-class GuardPort:
-    """Port-forward to the guard (NetworkPolicy admits only APISIX; port-forward is the
-    deliberate operator path, as for the Admin API)."""
-
-    def __enter__(self):
-        self.proc = subprocess.Popen([KUBECTL, "--kubeconfig", KUBECONFIG, "-n", "ai", "port-forward", "svc/guard", ":8000"],
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        m = re.search(r"127\.0\.0\.1:(\d+)", self.proc.stdout.readline())
-        if not m:
-            self.proc.terminate()
-            sys.exit("could not port-forward to the guard")
-        self.url = f"http://127.0.0.1:{m.group(1)}"
-        return self
-
-    def __exit__(self, *exc):
-        self.proc.terminate()
-
-    def version(self) -> str | None:
-        try:
-            return httpx.get(f"{self.url}/v1/policy", timeout=5).json()["version"]
-        except (httpx.HTTPError, KeyError, ValueError):
-            return None
+def demo_key() -> str:
+    return ops.secret("consumer-demo-user")
 
 
-def set_policy(overrides: dict) -> None:
-    """policy/policy.yaml with the scenario's overrides, applied and waited for (GRD-02)."""
-    policy = yaml.safe_load((ROOT / "policy/policy.yaml").read_text())
-    for check, mode in overrides.items():
-        policy["checks"][check]["mode"] = mode
-    text = yaml.safe_dump(policy, sort_keys=False, default_flow_style=None)
-    import hashlib
-    want = hashlib.sha256(text.encode()).hexdigest()[:12]
-    cm = kubectl("-n", "ai", "create", "configmap", "guard-policy", f"--from-literal=policy.yaml={text}",
-                 "--dry-run=client", "-o", "yaml")
-    subprocess.run([KUBECTL, "--kubeconfig", KUBECONFIG, "apply", "-f", "-"], input=cm.stdout,
-                   capture_output=True, text=True, check=True)
-    changes = ", ".join(f"{c} -> {m}" for c, m in overrides.items()) or "all checks enforce"
-    deadline = time.monotonic() + 20
-    with GuardPort() as guard:
-        while guard.version() != want:
-            if time.monotonic() > deadline:
-                sys.exit("guard did not load the scenario policy within 20 s")
-            time.sleep(1)
-    say(f"Policy: {changes}", DIM)
-
-
-def trace_url(trace_id: str) -> str:
-    import json
-    import urllib.parse
-    panes = {"a": {"datasource": "tempo", "queries": [{"refId": "A", "queryType": "traceql", "query": trace_id}],
-                   "range": {"from": "now-1h", "to": "now"}}}
-    return f"{GRAFANA}/explore?schemaVersion=1&panes={urllib.parse.quote(json.dumps(panes))}"
-
-
-def header(scripted: bool, sid: str) -> str:
+def header(sid: str, scripted: bool) -> str:
     return f"{sid}:scripted" if scripted else sid
 
 
-def run_task(s: dict, scripted: bool, key: str) -> dict:
-    req = s["request"]
-    say(f"\nYou → {req['agent']}: {req['instruction']}", BOLD)
-    t0 = time.monotonic()
-    r = httpx.post(f"{GATEWAY}/agents/{req['agent']}/task", timeout=900,
-                   json={"instruction": req["instruction"], "scenario_id": header(scripted, s["id"])},
-                   headers={"apikey": key, "X-Demo-Scenario": header(scripted, s["id"])})
-    if r.status_code != 200:
-        say(f"Gateway answered {r.status_code}: {r.text[:200]}", RED)
-        return {}
-    body = r.json()
-    for e in body["events"]:
-        who = e.get("agent", req["agent"])
+# ---------------------------------------------------------------------------- output
+def show_events(result: dict, first_agent: str) -> None:
+    for e in result["events"]:
+        who = e.get("agent", first_agent)
         if e["type"] == "tool":
             colour = RED if e["outcome"] in ("denied", "quarantined", "halted") else ""
-            extra = f"  {DIM}{e.get('decision_id', '')}{RESET}" if e.get("decision_id") else ""
+            extra = f"  {DIM}{e['decision_id']}{RESET}" if e.get("decision_id") else ""
             say(f"  {who:<11}{e['tool']:<34} {e['outcome']}{extra}", colour)
         elif e["type"] == "agent":
             say(f"  {who:<11}finished: {e['status']}", GREEN if e["status"] == "completed" else RED)
         elif e["type"] in ("blocked", "halted"):
             say(f"  {who:<11}{e['type']}: {e.get('reason') or e.get('detail')}", RED)
-    status_colour = GREEN if body["status"] == "completed" else RED
-    say(f"\n{req['agent']} ({body['status']}, {time.monotonic() - t0:.1f}s): {body['reply']}", status_colour)
-    say(f"Trace {body['trace_id']}  {DIM}{trace_url(body['trace_id'])}{RESET}", BLUE)
-    return body
 
 
-def run_attacks(s: dict, key: str) -> None:
+def show_result(agent: str, result: dict, elapsed: float) -> None:
+    colour = GREEN if result["status"] == "completed" else RED
+    say(f"\n{agent} ({result['status']}, {elapsed:.1f}s): {result['reply']}", colour)
+    say(f"Trace {result['trace_id']}  {DIM}{trace_url(result['trace_id'])}{RESET}", BLUE)
+
+
+def show_kills(since: float) -> list[dict]:
+    with ops.Forward("gateway", "killswitch", 8000) as ks_url:
+        events = [e for e in ops.KillSwitchApi(ks_url).events(50) if e["ts"] >= since and e["type"] == "trip"]
+    for e in events:
+        who = {"guard": "the guard", "alertmanager": "an alert", "manual": e["actor"]}.get(e["source"], e["source"])
+        say(f"  kill switch {e['scope']} tripped by {who}: {e['reason']}  {DIM}{e['incident_id']}, "
+            f"verified in {e['latency_ms']:.0f} ms{RESET}", RED)
+    return events
+
+
+# ---------------------------------------------------------------------------- requests
+def task(agent: str, instruction: str, scenario: str, max_steps: int | None = None, chat: bool = False) -> tuple[dict, float]:
+    body = {"scenario_id": scenario}
+    if max_steps:
+        body["max_steps"] = max_steps
+    if chat:
+        body["messages"] = [{"role": "user", "content": instruction}]
+    else:
+        body["instruction"] = instruction
+    t0 = time.monotonic()
+    r = httpx.post(f"{GATEWAY}/agents/{agent}/{'chat' if chat else 'task'}", json=body, timeout=900,
+                   headers={"apikey": demo_key(), "X-Demo-Scenario": scenario})
+    elapsed = time.monotonic() - t0
+    if r.status_code == 503:
+        return {"status": "halted_by_kill_switch", "reply": "The gateway refused the request: kill switch engaged.",
+                "trace_id": "", "events": []}, elapsed
+    if r.status_code != 200:
+        sys.exit(f"gateway answered {r.status_code}: {r.text[:200]}")
+    return r.json(), elapsed
+
+
+def wait_tripped(scope: str, timeout: float) -> float | None:
+    """Seconds until scope is tripped, or None."""
+    t0 = time.monotonic()
+    with ops.Forward("gateway", "killswitch", 8000) as ks_url:
+        ks = ops.KillSwitchApi(ks_url)
+        while time.monotonic() - t0 < timeout:
+            if ks.status()["scopes"].get(scope):
+                return time.monotonic() - t0
+            time.sleep(1)
+    return None
+
+
+# ---------------------------------------------------------------------------- scenario kinds
+def run_task(s: dict, scripted: bool) -> None:
+    req = s["request"]
+    since = time.time()
+    say(f"\nYou → {req['agent']}: {req['instruction']}", BOLD)
+    result, elapsed = task(req["agent"], req["instruction"], header(s["id"], scripted), req.get("max_steps"))
+    show_events(result, req["agent"])
+    show_result(req["agent"], result, elapsed)
+    if s.get("expect_trip"):
+        time.sleep(1)
+        kills = show_kills(since)
+        if kills:
+            say(f"\nEvidence: make evidence INCIDENT={kills[0]['incident_id']}", DIM)
+
+
+def run_attacks(s: dict) -> None:
     attacks = yaml.safe_load((ROOT / "scenarios" / s["attacks"]).read_text())
     for kind in ("crude", "subtle", "benign"):
         say(f"\n{kind.capitalize()} prompts", BOLD)
         for text in attacks[kind]:
             r = httpx.post(f"{GATEWAY}/agents/researcher/chat", timeout=300,
                            json={"messages": [{"role": "user", "content": text}], "scenario_id": "s1:scripted"},
-                           headers={"apikey": key, "X-Demo-Scenario": "s1:scripted"})
-            try:
-                err = r.json().get("error") or {}
-            except ValueError:
-                err = {}
-            if r.status_code == 200:
-                verdict, colour = "passed to the agent", GREEN
-            elif r.status_code == 400:
-                verdict, colour = "stopped: known attack pattern", RED
-            elif r.status_code == 403:
-                verdict, colour = f"stopped: prompt injection  {DIM}{err.get('decision_id', '')}{RESET}", RED
-            else:
-                verdict, colour = f"gateway answered {r.status_code}", RED
-            say(f"  {r.status_code}  {text[:64]:<64}  {colour}{verdict}{RESET}")
+                           headers={"apikey": demo_key(), "X-Demo-Scenario": "s1:scripted"})
+            err = (r.json().get("error") or {}) if r.headers.get("content-type", "").startswith("application/json") else {}
+            verdict = {200: ("passed to the agent", GREEN), 400: ("stopped: known attack pattern", RED),
+                       403: (f"stopped: prompt injection  {DIM}{err.get('decision_id', '')}{RESET}", RED)}.get(
+                r.status_code, (f"gateway answered {r.status_code}", RED))
+            say(f"  {r.status_code}  {text[:64]:<64}  {verdict[1]}{verdict[0]}{RESET}")
+
+
+def run_alert_attacks(s: dict) -> None:
+    """S4: an agent keeps sending injection attempts; the GuardBlockSpike alert trips it."""
+    ops.wait_alerts_clear(note)
+    ops.preconditions(s.get("policy") or {}, note)
+    attacks = yaml.safe_load((ROOT / "scenarios" / s["attacks"]).read_text())["subtle"][: s["count"]]
+    agent = s["as"]
+    key = ops.secret(f"consumer-{agent}")
+    since = time.time()
+    say(f"\n{agent} sends {len(attacks)} injection attempts to the LLM", BOLD)
+    for text in attacks:
+        r = httpx.post(f"{GATEWAY}/llm/v1/chat/completions", timeout=60,
+                       json={"model": "demo", "messages": [{"role": "user", "content": text}]},
+                       headers={"apikey": key, "X-Demo-Scenario": f"{s['id']}:scripted"})
+        say(f"  {r.status_code}  {text[:70]}", RED if r.status_code != 200 else "")
+    say(f"\nWaiting for the alert to trip agent:{agent} (up to {s['within']} s)", BOLD)
+    took = wait_tripped(f"agent:{agent}", s["within"])
+    if took is None:
+        say("Not tripped in time.", RED)
+        return
+    say(f"  tripped {took:.0f} s after the last attempt", RED)
+    show_kills(since)
+    other = "executor" if agent == "researcher" else "researcher"
+    r = httpx.post(f"{GATEWAY}/llm/v1/chat/completions", timeout=60,
+                   json={"model": "demo", "messages": [{"role": "user", "content": "status check"}]},
+                   headers={"apikey": ops.secret(f"consumer-{other}"), "X-Demo-Scenario": "smoke"})
+    say(f"  {other} is unaffected: LLM call answered {r.status_code}", GREEN if r.status_code == 200 else RED)
+
+
+def run_manual_kill(s: dict, scripted: bool) -> None:
+    """S5: start a task, trip global mid-way, then reset with confirmation."""
+    req = s["request"]
+    out: dict = {}
+
+    def worker():
+        out["result"], out["elapsed"] = task(req["agent"], req["instruction"], header(s["id"], scripted))
+
+    say(f"\nYou → {req['agent']}: {req['instruction']}", BOLD)
+    t = threading.Thread(target=worker)
+    t.start()
+    time.sleep(s.get("trip_after_s", 2.5))
+    with ops.Forward("gateway", "killswitch", 8000) as ks_url:
+        ks = ops.KillSwitchApi(ks_url)
+        r = ks.trip("global", "drill", actor="operator")
+        say(f"  operator tripped global: verified in {r['latency_ms']:.0f} ms ({r['incident_id']})", RED)
+        t.join()
+        show_events(out["result"], req["agent"])
+        show_result(req["agent"], out["result"], out["elapsed"])
+        r = ks.reset("global", "drill over", actor="operator", confirm="RESET GLOBAL")
+        say(f"\n  operator reset global: verified in {r['latency_ms']:.0f} ms", GREEN)
+    result, elapsed = task(req["agent"], req["instruction"], header(s["id"], scripted))
+    say(f"  service restored: {req['agent']} {result['status']} in {elapsed:.1f}s",
+        GREEN if result["status"] == "completed" else RED)
+
+
+def run_rogue(s: dict) -> None:
+    """S6 / DEMO-03: a runaway agent is stopped by the anomaly alerts."""
+    ops.wait_alerts_clear(note)
+    ops.preconditions(s.get("policy") or {}, note)
+    req = s["request"]
+    since = time.time()
+    say(f"\nYou → {req['agent']}: {req['instruction']}  {DIM}(rogue: up to {req['max_steps']} steps){RESET}", BOLD)
+    result, elapsed = task(req["agent"], req["instruction"], f"{s['id']}:scripted", req["max_steps"], chat=True)
+    tools = [e for e in result["events"] if e["type"] == "tool"]
+    say(f"  {req['agent']} made {len(tools)} tool calls in {elapsed:.0f} s before it stopped", RED)
+    show_result(req["agent"], result, elapsed)
+    show_kills(since)
+
+
+def run(sid: str, scripted_flag: bool) -> None:
+    s = find_scenario(sid)
+    scripted = scripted_flag or setting("LLM_MODE", "mock") == "mock"
+    say(f"{s['id'].upper()}  {s['title']}", BOLD)
+    note(s["story"])
+    ops.preconditions(s.get("policy") or {}, note)
+    kind = s.get("kind", "task")
+    {"task": lambda: run_task(s, scripted), "attacks": lambda: run_attacks(s),
+     "alert-attacks": lambda: run_alert_attacks(s), "manual-kill": lambda: run_manual_kill(s, scripted),
+     "rogue": lambda: run_rogue(s)}[kind]()
+    if s.get("show"):
+        note(f"\nIn Grafana ({GRAFANA}): " + ", ".join(s["show"]))
 
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="demo")
-    p.add_argument("scenario")
-    p.add_argument("--scripted", action="store_true",
-                   help="use the mock LLM script even in live mode (deterministic)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run")
+    r.add_argument("scenario")
+    r.add_argument("--scripted", action="store_true", help="use the mock LLM script even in live mode")
+    sub.add_parser("all")
+    t = sub.add_parser("trip")
+    t.add_argument("scope")
+    t.add_argument("reason")
+    k = sub.add_parser("kill-reset")
+    k.add_argument("scope")
+    k.add_argument("reason")
+    sub.add_parser("reset")
+    sub.add_parser("status")
+    e = sub.add_parser("evidence")
+    e.add_argument("--incident")
+    e.add_argument("--trace")
+    v = sub.add_parser("evidence-verify")
+    v.add_argument("dir")
+    rb = sub.add_parser("evidence-rebuild")
+    rb.add_argument("dir")
     a = p.parse_args()
-    s = find_scenario(a.scenario)
-    mode = env_local("LLM_MODE", "mock")
-    scripted = a.scripted or mode == "mock"
-    say(f"{s['id'].upper()}  {s['title']}", BOLD)
-    say(s["story"], DIM)
-    set_policy(s.get("policy") or {})
-    key = (ROOT / ".secrets/consumer-demo-user").read_text().strip()
-    if "attacks" in s:
-        run_attacks(s, key)
-    else:
-        run_task(s, scripted, key)
-    if s.get("show"):
-        say(f"\nIn Grafana ({GRAFANA}): " + ", ".join(s["show"]), DIM)
+
+    if a.cmd == "run":
+        run(a.scenario, a.scripted)
+    elif a.cmd == "all":
+        for sid in ("s0", "s1", "s2", "s3", "s4", "s5"):
+            run(sid, False)
+            say("")
+            ops.full_reset(note)
+            say("")
+    elif a.cmd in ("trip", "kill-reset"):
+        if a.scope not in ops.SCOPES:
+            sys.exit(f"SCOPE must be one of {ops.SCOPES}")
+        with ops.Forward("gateway", "killswitch", 8000) as ks_url:
+            ks = ops.KillSwitchApi(ks_url)
+            if a.cmd == "trip":
+                res = ks.trip(a.scope, a.reason)
+                say(f"{a.scope} tripped ({res['incident_id']}), verified in {res['latency_ms']:.0f} ms", RED)
+            else:
+                confirm = ""
+                if a.scope == "global":
+                    confirm = input('Type RESET GLOBAL to confirm: ').strip()
+                res = ks.reset(a.scope, a.reason, confirm=confirm)
+                say(f"{a.scope} reset, verified in {res['latency_ms']:.0f} ms", GREEN)
+    elif a.cmd == "reset":
+        ops.full_reset(note)
+    elif a.cmd == "status":
+        ops.status(say)
+    elif a.cmd == "evidence":
+        from demo_cli import evidence
+
+        if bool(a.incident) == bool(a.trace):
+            sys.exit("give exactly one of INCIDENT=... or TRACE=...")
+        evidence.make(a.incident, a.trace, say)
+    elif a.cmd == "evidence-verify":
+        from demo_cli import evidence
+
+        sys.exit(0 if evidence.verify(ops.ROOT / a.dir if not a.dir.startswith("/") else __import__("pathlib").Path(a.dir), say) else 1)
+    elif a.cmd == "evidence-rebuild":
+        from demo_cli import evidence
+
+        evidence.rebuild(__import__("pathlib").Path(a.dir).resolve())
 
 
 if __name__ == "__main__":

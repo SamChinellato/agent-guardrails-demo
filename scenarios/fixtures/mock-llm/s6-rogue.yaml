@@ -1,150 +1,479 @@
-# S6 rogue agent (ATK-04, DEMO-03): the researcher loops over its tools, re-reading every
-# document again and again. Context and tokens grow each step until the gateway's
-# anomaly alerts trip the kill switch for this agent (P5). Generated; 49 steps.
+# S6 rogue agent (ATK-04, DEMO-03): the researcher loops over its tools, re-reading the
+# benign documents again and again, about 150 tool calls a minute with ~0.3 s of model time
+# per step. Nothing it reads is malicious: the AgentToolCallSpike alert trips it on behaviour
+# alone, part-way through. Generated; 119 steps.
 agents:
   researcher:
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-02}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-03}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-01}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-02}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-04}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-05}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-02}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-03}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-01}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-02}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-05}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
-      arguments: {id: supplier-07}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
+      arguments: {id: supplier-01}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-03}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-04}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-01}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-02}
-  - tool_calls:
-    - name: docs__list_documents
-      arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-05}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
+    delay_ms: 300
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-02}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-03}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-07}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-01}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
   - tool_calls:
     - name: docs__list_documents
       arguments: {}
-  - tool_calls:
-    - name: docs__read_document
-      arguments: {id: supplier-04}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
       arguments: {id: supplier-05}
+    delay_ms: 300
   - tool_calls:
     - name: docs__read_document
-      arguments: {id: supplier-07}
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-02}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-04}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-05}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-01}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__list_documents
+      arguments: {}
+    delay_ms: 300
+  - tool_calls:
+    - name: docs__read_document
+      arguments: {id: supplier-03}
+    delay_ms: 300
   - {final: Finished re-reading everything.}

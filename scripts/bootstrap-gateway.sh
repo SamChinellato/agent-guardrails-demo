@@ -62,8 +62,9 @@ preserve_kill() {
   jq --argjson live "$3" --arg kind "$1" '
     if $kind == "plugin_configs" and ($live.plugins["fault-injection"]._meta.disable == false) then
       .plugins["fault-injection"]._meta.disable = false
-    elif $kind == "consumers" and ($live.plugins["fault-injection"] != null) then
-      .plugins["fault-injection"] = $live.plugins["fault-injection"]
+      | .labels = (($live.labels // {}) | with_entries(select(.key | startswith("killswitch."))))
+    elif $kind == "consumers" and ($live.plugins["agent-kill-switch"] != null) then
+      .plugins["agent-kill-switch"] = $live.plugins["agent-kill-switch"]
     else . end' <<<"$2"
 }
 

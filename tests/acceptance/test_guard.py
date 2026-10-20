@@ -37,6 +37,23 @@ def call(gateway, key, server, tool, arguments):
     return mcp(gateway, key, server, "tools/call", {"name": tool, "arguments": arguments}).json()
 
 
+@pytest.fixture
+def executor_open(forward):
+    """A critical denial also trips the executor (GRD-06), so tests that use it start open."""
+    ks = httpx.Client(base_url=forward("gateway", "killswitch", 8000), timeout=30,
+                      headers={"Authorization": f"Bearer {__import__('conftest').secret('killswitch-operator-token')}"})
+    guard = forward("ai", "guard", 8000)
+
+    def release():
+        if ks.get("/v1/status").json()["scopes"]["agent:executor"]:
+            ks.post("/v1/reset", json={"scope": "agent:executor", "reason": "test", "actor": "test"}).raise_for_status()
+        httpx.post(f"{guard}/v1/autotrip/reset")
+
+    release()
+    yield release
+    release()
+
+
 def policy_set(check, mode):
     subprocess.run([str(ROOT / "scripts/policy-set.sh"), check, mode], check=True, capture_output=True)
 
@@ -46,14 +63,16 @@ def test_fixture_counts():
     assert len(ATTACKS["crude"]) >= 5 and len(ATTACKS["subtle"]) >= 5 and len(ATTACKS["benign"]) >= 10
 
 
+# Direct LLM-route checks use the probe consumer: the same guards apply, and repeated blocks
+# for a real agent would (correctly) trip it via GuardBlockSpike. S1 and S4 cover the agents.
 @pytest.mark.parametrize("text", ATTACKS["crude"])
 def test_crude_attacks_get_400_from_regex_guard(gateway, key, text):
-    assert ask(gateway, key("researcher"), text).status_code == 400
+    assert ask(gateway, key("probe"), text).status_code == 400
 
 
 @pytest.mark.parametrize("text", ATTACKS["subtle"])
 def test_subtle_attacks_get_403_from_injection_guard(gateway, key, text):
-    r = ask(gateway, key("researcher"), text)
+    r = ask(gateway, key("probe"), text)
     assert r.status_code == 403, r.text
     err = r.json()["error"]
     assert err["type"] == "prompt_injection_blocked" and err["decision_id"].startswith("dec-")
@@ -61,7 +80,7 @@ def test_subtle_attacks_get_403_from_injection_guard(gateway, key, text):
 
 @pytest.mark.parametrize("text", ATTACKS["benign"])
 def test_benign_prompts_pass(gateway, key, text):
-    assert ask(gateway, key("researcher"), text).status_code == 200
+    assert ask(gateway, key("probe"), text).status_code == 200
 
 
 # ---------------------------------------------------------------- GRD-03 allowlist and tools/list
@@ -90,30 +109,33 @@ def test_initialize_passes_through(gateway, key):
     assert r.json()["result"]["serverInfo"]["name"] == "mcp-docs"
 
 
-def test_export_customer_data_denied_to_all(gateway, key):
+def test_export_customer_data_denied_to_all(gateway, key, executor_open):
     err = call(gateway, key("executor"), "actions", "export_customer_data", {})["error"]
     assert err["code"] == -32001 and err["data"]["decision_id"].startswith("dec-")
 
 
 # ---------------------------------------------------------------- GRD-04 argument rules
-def test_external_email_denied_internal_allowed(gateway, key, forward):
+def test_external_email_denied_internal_allowed(gateway, key, forward, executor_open):
     outbox = forward("ai", "mcp-actions", 8000)
     httpx.delete(f"{outbox}/outbox")
-    err = call(gateway, key("executor"), "actions", "send_email",
-               {"to": "audit@external-review.example", "subject": "export", "body": "data"})["error"]
-    assert err["code"] == -32001 and err["data"]["check"] == "mcp.argument_rules"
     ok = call(gateway, key("executor"), "actions", "send_email",
               {"to": "quality@demo.local", "subject": "CAR", "body": "please review"})
     assert ok["result"]["isError"] is False
+    sub = call(gateway, key("executor"), "actions", "send_email",
+               {"to": "quality@blueridge.demo.local", "subject": "CAR", "body": "please review"})
+    assert sub["result"]["isError"] is False  # subdomains of demo.local are internal (D-034)
+    err = call(gateway, key("executor"), "actions", "send_email",
+               {"to": "audit@external-review.example", "subject": "export", "body": "data"})["error"]
+    assert err["code"] == -32001 and err["data"]["check"] == "mcp.argument_rules"
     recipients = [e["to"] for e in httpx.get(f"{outbox}/outbox").json()]
-    assert recipients == ["quality@demo.local"]  # nothing external reached the outbox
+    assert recipients == ["quality@demo.local", "quality@blueridge.demo.local"]  # nothing external
 
 
-def test_update_record_limited_to_status_and_notes(gateway, key):
-    err = call(gateway, key("executor"), "actions", "update_record", {"id": "supplier-02", "fields": {"owner": "x"}})
-    assert err["error"]["code"] == -32001
+def test_update_record_limited_to_status_and_notes(gateway, key, executor_open):
     ok = call(gateway, key("executor"), "actions", "update_record", {"id": "supplier-02", "fields": {"status": "watch"}})
     assert ok["result"]["isError"] is False
+    err = call(gateway, key("executor"), "actions", "update_record", {"id": "supplier-02", "fields": {"owner": "x"}})
+    assert err["error"]["code"] == -32001
 
 
 # ---------------------------------------------------------------- GRD-07 result scanning, ATK-02
@@ -143,7 +165,7 @@ def test_policy_hot_reload_within_10s_and_monitor_mode_flags(gateway, key):
 # ---------------------------------------------------------------- GRD-05 decision records, OBS-02
 def test_decision_record_spans_and_metric(gateway, key, forward):
     trace_id = secrets.token_hex(16)
-    r = ask(gateway, key("researcher"), ATTACKS["subtle"][0], traceparent=f"00-{trace_id}-{secrets.token_hex(8)}-01")
+    r = ask(gateway, key("probe"), ATTACKS["subtle"][0], traceparent=f"00-{trace_id}-{secrets.token_hex(8)}-01")
     decision_id = r.json()["error"]["decision_id"]
 
     loki = httpx.Client(base_url=forward("observability", "loki", 3100), timeout=10)
@@ -159,7 +181,7 @@ def test_decision_record_spans_and_metric(gateway, key, forward):
     for field in ("decision_id", "trace_id", "span_id", "agent", "check", "mode", "verdict", "score", "rule_id",
                   "reason", "route", "policy_version", "content_sha256", "excerpt"):
         assert rec.get(field) not in (None, ""), f"decision record missing {field}"
-    assert rec["trace_id"] == trace_id and rec["verdict"] == "block" and rec["agent"] == "researcher"
+    assert rec["trace_id"] == trace_id and rec["verdict"] == "block" and rec["agent"] == "probe"
 
     # The guard's spans are children of the gateway span in the same trace (OBS-02)
     tempo = httpx.Client(base_url=forward("observability", "tempo", 3200), timeout=10)
@@ -182,7 +204,7 @@ def test_decision_record_spans_and_metric(gateway, key, forward):
     assert "guard.decision" in events
 
     prom = httpx.Client(base_url=forward("observability", "kps-prometheus", 9090), timeout=10)
-    q = 'guard_decisions_total{agent="researcher",check="llm.user_prompt_injection",verdict="block"}'
+    q = 'guard_decisions_total{agent="probe",check="llm.user_prompt_injection",verdict="block"} > 0'
     poll(lambda: bool(prom.get("/api/v1/query", params={"query": q}).json()["data"]["result"]), timeout=15)
 
 

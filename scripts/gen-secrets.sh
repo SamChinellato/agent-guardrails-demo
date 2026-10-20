@@ -38,6 +38,9 @@ apply_secret gateway consumer-keys \
   demo-user=consumer-demo-user researcher=consumer-researcher executor=consumer-executor probe=consumer-probe
 apply_secret gateway killswitch-tokens \
   operator=killswitch-operator-token guard=killswitch-guard-token alertmanager=killswitch-alertmanager-token
+# Callers of the killswitch get only their own token (KS-09)
+apply_secret ai killswitch-guard token=killswitch-guard-token
+apply_secret observability killswitch-alertmanager token=killswitch-alertmanager-token
 # Agents and the console carry their own consumer key (7.7, DEMO-01)
 apply_secret ai agent-keys researcher=consumer-researcher executor=consumer-executor demo-user=consumer-demo-user
 kubectl -n observability create secret generic grafana-admin \

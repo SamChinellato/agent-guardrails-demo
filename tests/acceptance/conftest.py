@@ -126,3 +126,17 @@ def _reachable(client: Admin) -> bool:
         return client.http.get("/routes").status_code == 200
     except httpx.HTTPError:
         return False
+
+
+@pytest.fixture(scope="module", autouse=True)
+def kill_switches_open(forward):
+    """Each module starts with every kill-switch scope open and the guard's trip memory
+    clear: scenario tests trip agents for real (S3-S6)."""
+    ks = httpx.Client(base_url=forward("gateway", "killswitch", 8000), timeout=30,
+                      headers={"Authorization": f"Bearer {secret('killswitch-operator-token')}"})
+    for scope, on in ks.get("/v1/status").json()["scopes"].items():
+        if on:
+            ks.post("/v1/reset", json={"scope": scope, "reason": "test module setup", "actor": "test",
+                                       "confirm": "RESET GLOBAL"}).raise_for_status()
+    httpx.post(f"{forward('ai', 'guard', 8000)}/v1/autotrip/reset", timeout=10)
+    yield

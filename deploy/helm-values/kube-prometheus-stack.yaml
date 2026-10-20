@@ -48,7 +48,11 @@ alertmanager:
     resources:
       requests: {cpu: 20m, memory: 32Mi}
       limits: {cpu: 200m, memory: 128Mi}
-  # The killswitch webhook receiver is added in P5 (F6, KS-10)
+    # Bearer token for the killswitch webhook, mounted at /etc/alertmanager/secrets/<name>/
+    secrets: [killswitch-alertmanager]
+  # Alerts with a killswitch_scope label go to the killswitch (F6, KS-10); others notify only.
+  # repeat_interval is short because the killswitch is idempotent and ignores alerts that
+  # began before that scope's last reset (D-037).
   config:
     global: {resolve_timeout: 1m}
     route:
@@ -56,9 +60,20 @@ alertmanager:
       group_by: [alertname, killswitch_scope]
       group_wait: 5s
       group_interval: 10s
-      repeat_interval: 1h
+      repeat_interval: 1m
+      routes:
+        - receiver: killswitch
+          matchers: ['killswitch_scope=~".+"']
     receivers:
       - name: "null"
+      - name: killswitch
+        webhook_configs:
+          - url: http://killswitch.gateway.svc.cluster.local:8000/v1/alertmanager
+            send_resolved: false
+            http_config:
+              authorization:
+                type: Bearer
+                credentials_file: /etc/alertmanager/secrets/killswitch-alertmanager/token
 
 grafana:
   enabled: true

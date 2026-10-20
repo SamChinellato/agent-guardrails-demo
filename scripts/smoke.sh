@@ -26,8 +26,12 @@ wait_for "LLM route" 30 bash -c "[[ \"\$(curl -s -o /dev/null -w '%{http_code}' 
 
 expect "no key is rejected" 401 -
 expect "demo-user may not call the LLM" 403 demo-user
-expect "researcher gets a completion" 200 researcher
-if [[ "${LLM_MODE:-mock}" == mock ]]; then
-  jq -e '.choices[0].message.content == "smoke-ok researcher"' "$OUT" >/dev/null \
-    || die "smoke: unexpected completion $(head -c 300 "$OUT")"
+# The probe consumer is no agent, so an agent kill left over from a demo doesn't fail make up
+got="$(status probe)"
+if [[ "$got" == 503 ]] && jq -e '.error.type == "kill_switch_engaged"' "$OUT" >/dev/null 2>&1; then
+  die "smoke: the global kill switch is engaged. Reset it with: make kill-reset SCOPE=global REASON=\"...\""
 fi
+[[ "$got" == 200 ]] || die "smoke: probe completion: expected 200, got $got: $(head -c 300 "$OUT")"
+jq -e '.choices[0].message.content == "smoke-ok probe"' "$OUT" >/dev/null \
+  || die "smoke: unexpected completion $(head -c 300 "$OUT")"
+log "smoke: probe gets a completion -> 200"

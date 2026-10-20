@@ -1,0 +1,95 @@
+# Killswitch (7.4): the only runtime client of the Admin API (GW-07). One replica with the
+# audit log on a PVC (KS-07); Recreate so two pods never write the chain at once.
+# ${KILLSWITCH_IMAGE} is substituted by scripts/up.sh.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: killswitch-audit, namespace: gateway}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 256Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: killswitch
+  namespace: gateway
+  labels: {app: killswitch, demo/metrics: "true"}
+spec:
+  selector: {app: killswitch}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: killswitch-panel
+  namespace: gateway
+  labels: {app: killswitch}
+spec:
+  type: NodePort
+  selector: {app: killswitch}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000, nodePort: 30090}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: killswitch
+  namespace: gateway
+  labels: {app: killswitch}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: killswitch}
+  template:
+    metadata:
+      labels: {app: killswitch}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: killswitch
+          image: ${KILLSWITCH_IMAGE}
+          env:
+            - {name: APISIX_ADMIN_URL, value: "http://apisix-admin.gateway.svc.cluster.local:9180"}
+            - name: APISIX_ADMIN_KEY
+              valueFrom: {secretKeyRef: {name: apisix-admin, key: admin}}
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.gateway.svc.cluster.local"}
+            - name: PROBE_KEY
+              valueFrom: {secretKeyRef: {name: consumer-keys, key: probe}}
+            - name: OPERATOR_TOKEN
+              valueFrom: {secretKeyRef: {name: killswitch-tokens, key: operator}}
+            - name: GUARD_TOKEN
+              valueFrom: {secretKeyRef: {name: killswitch-tokens, key: guard}}
+            - name: ALERTMANAGER_TOKEN
+              valueFrom: {secretKeyRef: {name: killswitch-tokens, key: alertmanager}}
+            - {name: AUDIT_LOG, value: /data/audit.jsonl}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.observability.svc.cluster.local:4318"}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: audit, mountPath: /data}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: audit
+          persistentVolumeClaim: {claimName: killswitch-audit}
+        - name: tmp
+          emptyDir: {}

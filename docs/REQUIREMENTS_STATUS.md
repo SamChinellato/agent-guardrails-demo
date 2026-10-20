@@ -2,7 +2,7 @@
 
 Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and the test that proves it. Updated at the end of each phase.
 
-**Current phase:** P4 done (agents, console, scenarios S0–S3). Next: P5 (kill switch, alerting, S4–S6).
+**Current phase:** P5 done (kill switch, alerting, S3–S6). Next: P6 (evidence bundle).
 
 | ID | Requirement | Status | Test | Notes |
 | --- | --- | --- | --- | --- |
@@ -20,32 +20,32 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | GRD-03 | Tool allowlist | DONE | `test_tools_list_filtered_per_agent`, `test_export_customer_data_denied_to_all` |  |
 | GRD-04 | Argument rules | DONE | `test_external_email_denied_internal_allowed`, `test_update_record_limited_to_status_and_notes` |  |
 | GRD-05 | Decision records | DONE | `test_decision_record_spans_and_metric` | Log + span event + counter; excerpt redacted, ≤ 500 chars. |
-| GRD-06 | Auto-trip | TODO | — | Auto-trip client built with 60 s dedupe; logs only until the killswitch exists (P5). |
+| GRD-06 | Auto-trip | DONE | `test_s3_guard_auto_trips_executor_within_3s` | Trip completes before the denial is returned (D-038); 60 s dedupe, cleared by `make reset`. |
 | GRD-07 | MCP proxy | DONE | `test_poisoned_document_quarantined_benign_documents_pass`, `test_export_customer_data_denied_to_all` | JSON only; SSE upstream rejected. |
 | GRD-08 | Readiness | DONE | readiness probe on `/readyz` | Ready only after model load and policy parse. |
 | ATK-01 | Direct injection fixtures | DONE | `test_fixture_counts` + the three parametrised ATK-01 tests | 5 crude, 5 subtle, 10 benign (D-026). |
 | ATK-02 | Poisoned document | DONE | `test_poisoned_document_quarantined_benign_documents_pass` | HTML comment + "Note to AI assistants" section. |
 | ATK-03 | Cascade | DONE | `test_s3_cascade_reaches_executor_and_is_denied` | Hand-off laundering scores 0.000 on the classifier; tool policy stops it. |
-| ATK-04 | Runaway agent (stretch) | TODO | — |  |
+| ATK-04 | Runaway agent (stretch) | DONE | `test_s6_rogue_agent_stopped_by_anomaly_alert` | Scripted runaway (behaviour only); stopped by AgentToolCallSpike about 22 s in (D-037). |
 | OBS-01 | One trace | DONE | `test_s0_baseline_completes_with_handoff_and_one_trace` | One trace across apisix, guard, both MCP servers, mock-llm and both agents, with agent.task, gen_ai.chat, mcp.tool_call, agent.handoff. |
 | OBS-02 | Gateway spans | DONE | `test_trace_reaches_tempo_within_15s_with_gateway_as_parent` | Guard spans join as children in P3. |
-| OBS-03 | Metrics | TODO | `test_agent_metrics_exported`, `test_gateway_metrics_by_route_and_consumer` | Gateway, guard and agent metrics done; killswitch metrics in P5. |
-| OBS-04 | Logs | TODO | `test_logs_for_the_trace_reach_loki_within_15s`, `test_service_logs_are_json_with_trace_context`, `test_datasources_link_logs_and_traces` | Log↔trace links configured both ways; every new service gets them through `demo-common`. |
-| OBS-05 | Dashboards | TODO | `test_dashboards_provisioned_with_5s_refresh` | All three dashboards provisioned (D-022); panels fill in as P3–P5 add metrics. |
+| OBS-03 | Metrics | DONE | `test_gateway_metrics_by_route_and_consumer`, `test_agent_metrics_exported`, `test_killswitch_metrics` | All six metric families from the spec. |
+| OBS-04 | Logs | DONE | `test_logs_for_the_trace_reach_loki_within_15s`, `test_service_logs_are_json_with_trace_context`, `test_datasources_link_logs_and_traces` | Every service logs JSON with trace_id/span_id via `demo-common`; Grafana links both ways. |
+| OBS-05 | Dashboards | DONE | `test_dashboards_provisioned_with_5s_refresh` | Three minimal dashboards (D-024); kill-switch timeline and annotations now populated. |
 | OBS-06 | Freshness | DONE | `test_trace_reaches_tempo_within_15s_with_gateway_as_parent`, `test_logs_for_the_trace_reach_loki_within_15s` | Measured: Tempo 1.6 s, Loki 2.2 s. |
 | OBS-07 | Sampling and retention | DONE | always_on sampler; Helm values | 100% sampling; Tempo, Loki and Prometheus retention 24 h. |
-| KS-01 | Scopes | DEVIATION | `test_pc_llm_kill_returns_503_within_2s_and_before_auth`, `test_agent_scoped_kill_affects_only_that_agent` | Agent scope uses the `agent-kill-switch` consumer plugin, not `fault-injection` (D-013). Killswitch service in P5. |
-| KS-02 | API | TODO | — |  |
-| KS-03 | Idempotence | TODO | — |  |
-| KS-04 | Verification | TODO | — |  |
-| KS-05 | Time bounds | TODO | — |  |
-| KS-06 | Responses | TODO | — |  |
-| KS-07 | Audit log | TODO | — |  |
-| KS-08 | Control panel | TODO | — |  |
-| KS-09 | Auth | TODO | — |  |
-| KS-10 | Alert rules | TODO | — |  |
-| KS-11 | In-flight requests | TODO | — |  |
-| KS-12 | Incidents | TODO | — |  |
+| KS-01 | Scopes | DEVIATION | `test_global_kill_stops_llm_tools_and_agents_with_typed_503s`, `test_tools_scope_stops_only_mcp`, `test_agent_scope_stops_only_that_agent`, `test_tools_stays_tripped_when_global_is_reset` | Agent scope uses the `agent-kill-switch` consumer plugin (D-013); scope labels (D-039). |
+| KS-02 | API | DONE | `test_global_reset_needs_confirmation_and_restores_service`, `test_tokens_are_scoped` | trip, reset, status, events, alertmanager; plus audit verify/raw and rotate. |
+| KS-03 | Idempotence | DONE | `test_trip_is_idempotent_verified_and_joins_incident` | Repeats recorded with `no_change: true`. |
+| KS-04 | Verification | DONE | `test_trip_is_idempotent_verified_and_joins_incident`, `test_status_is_read_live_from_apisix` | Read-back + probe (global/tools); read-back only for agents (D-039). |
+| KS-05 | Time bounds | DONE | `test_global_kill_stops_llm_tools_and_agents_with_typed_503s`, `test_s3_guard_auto_trips_executor_within_3s`, `test_s4_guard_block_spike_trips_researcher_within_60s` | Measured: manual 38 ms, guard 20 ms, alert-driven 11–22 s. |
+| KS-06 | Responses | DONE | `test_global_kill_stops_llm_tools_and_agents_with_typed_503s`, `test_s5_manual_global_kill_mid_task_and_reset` | Agents report `halted_by_kill_switch`. |
+| KS-07 | Audit log | DONE | `test_audit_log_is_hash_chained_and_tamper_evident` | JSONL on a PVC, SHA-256 chain; OTLP log + span per event. |
+| KS-08 | Control panel | DONE | `test_control_panel_needs_operator_token` | Port 8090; status and events refresh every 3 s without wiping the form. |
+| KS-09 | Auth | DONE | `test_tokens_are_scoped` | Operator: all; guard: trip agent:* only; alertmanager: webhook only. |
+| KS-10 | Alert rules | DONE | `test_s4_guard_block_spike_trips_researcher_within_60s`, `test_s6_rogue_agent_stopped_by_anomaly_alert` | GuardBlockSpike, TokenBurn (50k/min), AgentToolCallSpike, GatewayErrorRate (D-037). |
+| KS-11 | In-flight requests | TODO | — | Behaviour implemented (non-streaming, one in-flight call per agent); RUNBOOK note in P7. |
+| KS-12 | Incidents | DONE | `test_trip_is_idempotent_verified_and_joins_incident` | Same target within 10 min joins the incident. |
 | EVD-01 | Command | TODO | — |  |
 | EVD-02 | Bundle contents | TODO | — |  |
 | EVD-03 | Report content | TODO | — |  |
@@ -59,7 +59,7 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | REP-04 | Multi-arch | TODO | — | Pins are multi-arch index digests; classifier arm64 load test pending (D-005). |
 | REP-05 | Prerequisite check | DONE | `make prereqs` | Docker or rootless Podman: cgroups, API socket, wmem_default (D-009, D-029), ports, host Ollama. |
 | REP-06 | Prefetch | TODO | — |  |
-| REP-07 | Idempotence | TODO | second `make up` reports 0 changes | `make up` idempotent (D-016); `make reset` in P5. |
+| REP-07 | Idempotence | DONE | second `make up` reports 0 changes; `test_make_reset_under_2_minutes` | Reset: kill switches, guard memory, policy, outbox, audit rotation; waits for alerts to settle. |
 | REP-08 | Determinism | DONE | mock: all scenario tests; live: S0 end to end (81 s) | Scripted runs explicit with `:scripted` (D-032). |
 | REP-09 | Secrets | DONE | `make up` | `.secrets/` mode 600, values reused on re-run. |
 | REP-10 | Clean-room proof | TODO | — |  |
@@ -69,9 +69,9 @@ Every requirement ID in `SPEC.md`, with status `TODO`, `DONE` or `DEVIATION` and
 | NFR-03 | Gateway overhead added by guard on the LLM route, p95 | TODO | — |  |
 | NFR-04 | Host resources, live mode | TODO | — | Ollama runs on the host (D-002); prereqs warns under 16 GB host RAM. |
 | NFR-05 | Ollama model | DEVIATION | `make prereqs LLM_MODE=live` | granite4:micro instead of qwen3:4b: thinking can't be disabled reliably, and granite4 is accurate and fast enough on CPU (D-035). |
-| NFR-06 | Every service exposes `/healthz`, `/readyz` and `/metrics` | TODO | — | All services so far; killswitch in P5. |
-| NFR-07 | Resource requests and limits on every workload | TODO | — | All current workloads have requests and limits. |
+| NFR-06 | Every service exposes `/healthz`, `/readyz` and `/metrics` | DONE | readiness/liveness probes; `/metrics` scraped for every service | All services via `demo-common`. |
+| NFR-07 | Resource requests and limits on every workload | DONE | manifests and Helm values | Every workload has requests and limits (APISIX resized, D-040). |
 | NFR-08 | No data leaves the machine at runtime | DONE | `test_ai_namespace_has_no_internet`, `scripts/verify-netpol.sh` | Known limitation: kube-router startup window for new pods under churn (D-036). |
 | DEMO-01 | Live agent chat page at `/console` (D-019) | DONE | `test_console_page_and_chat` | `/console` on the gateway; live chat about 20–30 s per answer. |
 | DEMO-02 | Typed prompt injection blocked at the agent ingress route (D-019) | DONE | `test_s1_attacks_stopped_at_agent_ingress`, `test_console_page_and_chat` | ai-prompt-guard + ai-injection-guard on `agent-researcher`. |
-| DEMO-03 | Rogue agent auto-tripped on anomalous tool-call/token rate (D-019) | TODO | — | Rogue script and console button done; anomaly alerts and auto-trip in P5. |
+| DEMO-03 | Rogue agent auto-tripped on anomalous tool-call/token rate (D-019) | DONE | `test_s6_rogue_agent_stopped_by_anomaly_alert` | Console button and `make demo SCENARIO=s6-rogue`. |

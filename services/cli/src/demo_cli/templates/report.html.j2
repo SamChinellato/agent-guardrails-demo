@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evidence {{ r.subject.id }}</title>
+<style>
+  :root { --fog:#eef1f4; --paper:#fff; --ink:#1c2433; --muted:#6b7484; --rule:#d8dde4; --stop:#c8322f; --ok:#2e8a57; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fog:#141a24; --paper:#1d2533; --ink:#e8ecf2; --muted:#9aa3b2; --rule:#2c3647; --stop:#f0706c; --ok:#5cc48b; color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--fog); color:var(--ink); font:400 16px/1.55 "Atkinson Hyperlegible Next", system-ui, sans-serif; }
+  main { max-width: 64rem; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.1rem; margin: 32px 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .what { font-size: 1.1rem; max-width: 46rem; } .what li { margin-bottom: 6px; }
+  .nums { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+  .num { background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 18px; min-width: 12rem; }
+  .num b { display: block; font-size: 1.6rem; } .num span { color: var(--muted); font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; font-size: .92rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; } tr:last-child td { border-bottom: 0; }
+  .block { color: var(--stop); } .ids { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+  .ok { color: var(--ok); } .bad { color: var(--stop); }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body><main>
+<h1>{% if r.subject.kind == "incident" %}Incident {{ r.subject.id }}{% else %}Trace {{ r.subject.id }}{% endif %}</h1>
+<p class="sub">{{ r.subject.window[0] }} to {{ r.subject.window[1] }}{% if r.subject.agents %}, agents: {{ r.subject.agents | join(", ") }}{% endif %}</p>
+
+<h2>What happened</h2>
+<ul class="what">
+{% for line in r.summary.what_happened %}<li>{{ line }}</li>{% else %}<li>No kill switch was tripped in this window.</li>{% endfor %}
+</ul>
+{% set c = r.summary.containment %}
+{% if c %}
+<div class="nums">
+  {% if c.violation_to_trip_ms is not none %}<div class="num"><b>{{ "%.0f" | format(c.violation_to_trip_ms) }} ms</b><span>violation to trip</span></div>{% endif %}
+  <div class="num"><b>{{ "%.0f" | format(c.trip_to_verified_ms) }} ms</b><span>trip to verified</span></div>
+  <div class="num"><b>{% if c.trip_to_reset_s is not none %}{{ "%.0f" | format(c.trip_to_reset_s) }} s{% else %}not reset{% endif %}</b><span>trip to reset</span></div>
+</div>
+{% endif %}
+
+{% if r.summary.blocked %}
+<h2>Blocked by the gateway</h2>
+<div class="scroll"><table>
+<tr><th>Agent</th><th>Check</th><th>Tool</th><th>Reason</th><th>Decision</th></tr>
+{% for b in r.summary.blocked %}<tr><td>{{ b.agent }}</td><td>{{ b.check }}</td><td>{{ b.tool or "" }}</td><td>{{ b.reason }}</td><td class="ids">{{ b.decision_id }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+
+<h2>Timeline</h2>
+<div class="scroll"><table>
+<tr><th>Time (UTC)</th><th>Component</th><th>Actor</th><th>Action</th><th>Detail</th><th>Trace / span / decision</th></tr>
+{% for e in r.timeline %}
+<tr><td>{{ e.ts[11:23] }}</td><td>{{ e.component }}</td><td>{{ e.actor or "" }}</td>
+<td class="{{ 'block' if ('block' in e.action or 'trip' in e.action or 'denied' in e.action or 'quarantined' in e.action) else '' }}">{{ e.action }}</td>
+<td>{{ e.detail or "" }}</td><td class="ids">{{ e.trace_id or "" }}{% if e.span_id %} / {{ e.span_id }}{% endif %}{% if e.decision %}<br>{{ e.decision }}{% endif %}</td></tr>
+{% endfor %}
+</table></div>
+
+<h2>Integrity</h2>
+<p>Audit chain: <span class="{{ 'ok' if r.integrity.audit_chain_valid else 'bad' }}">{{ r.integrity.audit_chain }}</span>.
+Guard policy version {{ r.configuration.guard_policy_version }}, code {{ r.configuration.git_sha[:12] }}{% if r.configuration.git_dirty %} (uncommitted changes){% endif %}.
+Every file in this bundle is listed with its SHA-256 in manifest.json; check it with <code>make evidence-verify</code>.</p>
+</main></body></html>

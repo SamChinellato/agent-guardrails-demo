@@ -1,0 +1,10 @@
+id: s4
+title: Alert-driven trip
+story: An agent keeps sending injection attempts. A Prometheus alert spots the pattern and the killswitch suspends that agent; the other agent carries on.
+kind: alert-attacks
+policy: {}
+attacks: fixtures/attacks.yaml
+as: researcher
+count: 4
+within: 60
+show: [Incident, Agent Behaviour]

@@ -19,7 +19,7 @@ from prometheus_client import Histogram
 from demo_common import create_app, get_logger, run
 from guard.autotrip import AutoTrip
 from guard.classifier import Classifier
-from guard.engine import Engine, LocalDecider, Subject
+from guard.engine import Engine, LocalDecider, Subject, init_series
 from guard.mcp_proxy import McpProxy
 from guard.policy import PolicyStore
 
@@ -39,8 +39,9 @@ def _load() -> None:
     store = PolicyStore(POLICY_FILE)
     classifier = Classifier(MODEL_DIR)
     classifier.score("warm-up")
-    engine = Engine(store, LocalDecider(classifier), on_critical=AutoTrip(store))
-    state.update(store=store, engine=engine, proxy=McpProxy(engine))
+    autotrip = AutoTrip(store)
+    engine = Engine(store, LocalDecider(classifier), on_critical=autotrip)
+    state.update(store=store, engine=engine, proxy=McpProxy(engine), autotrip=autotrip)
     log.info("guard ready", extra={"policy_version": store.policy.version})
 
 
@@ -49,6 +50,7 @@ def ready() -> bool:
 
 
 app = create_app("guard", ready_check=ready)
+init_series()
 threading.Thread(target=_load, name="guard-load", daemon=True).start()
 
 
@@ -111,6 +113,16 @@ async def mcp(server: str, request: Request) -> Response:
         "guard.mcp", attributes={"mcp.server": server, "agent.id": request.headers.get("x-agent-id", "")}
     ):
         return await state["proxy"].handle(server, request)
+
+
+@app.post("/v1/autotrip/reset")
+async def autotrip_reset() -> JSONResponse:
+    """Clear auto-trip de-duplication (make reset). Not routed by APISIX; reached only by
+    the operator's port-forward."""
+    if not ready():
+        return JSONResponse({"error": "guard not ready"}, 503)
+    state["autotrip"].clear()
+    return JSONResponse({"cleared": True})
 
 
 @app.get("/v1/policy")
