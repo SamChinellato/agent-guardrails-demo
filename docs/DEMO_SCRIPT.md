@@ -103,6 +103,44 @@ Press **New chat** before the next run-through.
 
 ---
 
+## How the gateway decides
+
+Use this after beat 4, or whenever someone asks "is that an AI deciding?"
+
+**Say:** "Partly. Three kinds of check, and only one is machine learning."
+
+| Check | What it is | Where you saw it |
+| --- | --- | --- |
+| **Injection classifier** | A small ML model trained to spot prompt injection. It's a text classifier, not a chat model, and it runs inside the gateway on the CPU in tens of milliseconds, with nothing sent outside. It scores a piece of text from 0 to 1, and long documents are scored in sections so one hidden paragraph can't be averaged away. It's applied to what people send and what tools return; the agents' own text gets the pattern rules only. | Beat 2 (your message), beat 3 and the upload (documents) |
+| **Pattern rules** | A list of known attack phrases, such as "ignore all previous instructions". The final score is the higher of the two. | `heur.ignore_previous` in the reason |
+| **Policy rules** | Plain rules with no ML: which agent may use which tool, which email domains and record fields are allowed, and that no agent may ever export customer data. | Beat 4: the executor's export |
+
+"The model catches injected text. The rules catch harmful actions, even when the text looked innocent: in beat 4 the classifier scored the Coastal document 0.001, and the policy rule stopped it anyway. You want both."
+
+Each check has its own threshold. Messages are blocked at 0.9; content from outside, like documents, at a stricter 0.85.
+
+### Reading a Decision trail entry
+
+```
+16:31:55.870  BLOCK  researcher  mcp.tool_result_injection (enforce)  tool docs.read_document
+looks like a prompt injection: score 1.000 is at or above the 0.85 threshold (classifier 1.000, heuristic heur.ignore_previous 0.95)
+rule classifier   policy 58ccb6e9b8eb   dec-bcd39d8f6b46471f
+```
+
+- **BLOCK / ALLOW**: the verdict. **researcher**: who sent what was checked.
+- **The check name** says where in the flow it ran: `agent.` for what you send to an agent, `llm.` for what an agent sends to the LLM API, and `mcp.` for a tool call or what the tool returned.
+- **(enforce)** blocks; **(monitor)** only records.
+- **The second line** is the reason, with its evidence: the score, the threshold, and which signals fired.
+- **policy …** is the policy version the decision was made under. **dec-…** ties the decision to the kill switch, the evidence report and the trace.
+- **crit** marks how serious a check is when it fails. A failed critical check suspends the agent. Next to ALLOW, it only means the check passed.
+
+**The uploaded Northstar document, in order:**
+1. `agent.user_prompt_injection` ALLOW: your message, checked before the agent saw it (0.011).
+2. `llm.user_prompt_injection` ALLOW: the same message, checked again when the researcher sent it to the LLM API. Every hop is checked on its own.
+3. `mcp.tool_allowlist` and `mcp.argument_rules` ALLOW: the researcher may read documents.
+4. `mcp.tool_result_injection` **BLOCK**: the document scored 1.000 against 0.85, and the gateway withheld it.
+5. `llm.user_prompt_injection` ALLOW: the researcher wrote its answer, with the quarantine notice where the document would have been.
+
 ## Optional extras
 
 | How | What it shows |
