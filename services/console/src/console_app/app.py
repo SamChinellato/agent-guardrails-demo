@@ -28,6 +28,12 @@ PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 app = create_app("console")
 
 
+@app.get("/architecture", response_class=HTMLResponse, include_in_schema=False)
+async def architecture_page() -> HTMLResponse:
+    """How it works: the architecture as a page you can click through (D-049)."""
+    return HTMLResponse((Path(__file__).parent / "static" / "architecture.html").read_text())
+
+
 @app.get("/architecture.png", include_in_schema=False)
 async def architecture():
     """The architecture diagram (make diagram), shown from the console header."""

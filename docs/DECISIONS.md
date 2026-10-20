@@ -583,3 +583,9 @@ The diagram now shows:
 - the observability stack by name: telemetry collector, Tempo (traces), Loki (logs and decision records), Prometheus (metrics and alerts) and Grafana (dashboards and the decision trail)
 
 The gateway and the models are still described by what they do (D-045).
+
+## D-049: "How it works" is a page you can click through
+
+- **The page.** `/console/architecture` draws the architecture as nested boxes: this machine (the LLM API on the host), the Kubernetes cluster, the AI gateway (gateway, guard with its policy engine and ML classifier, kill switch), agents, tools and observability. Clicking a part explains it in a side panel, with what it does in the demo. The console's **How it works** link opens it.
+- **Names only.** Components and groups are labelled by name only, here and in the generated PNG. Explanations live in the panel and the script.
+- **The PNG stays.** `make diagram` still writes it, for documents and slides.
