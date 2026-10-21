@@ -54,8 +54,7 @@
   .thread { max-width: 46rem; margin: 0 auto; padding: 24px 16px 8px; display: flex; flex-direction: column; gap: 18px; }
 
   .welcome { margin: 12vh auto 0; text-align: center; max-width: 32rem; }
-  .welcome h2 { font-size: 1.6rem; margin: 0 0 8px; }
-  .welcome p { color: var(--muted); margin: 0 0 20px; }
+  .welcome h2 { font-size: 1.6rem; margin: 0 0 20px; }
   .starters { display: flex; flex-direction: column; gap: 8px; }
   .starters button { text-align: left; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 14px; color: var(--ink); }
 
@@ -90,8 +89,6 @@
   .attach { background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
   .upload { align-self: flex-end; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 14px; font-size: 0.92rem; }
   .upload span { color: var(--muted); }
-  .welcome .samples { font-size: 0.88rem; margin-top: 16px; }
-  .welcome .samples a { color: var(--muted); }
   .send { background: var(--lane); color: #fff; border: 0; border-radius: 12px; padding: 12px 20px; font-weight: 600; }
 
   /* Monitoring: where the selected message went */
@@ -159,13 +156,11 @@
 <template id="welcome">
   <div class="welcome">
     <h2>How can I help with suppliers today?</h2>
-    <p>I review Acme's supplier performance documents and pass routine follow-ups, like record updates and internal emails, to the executor agent.</p>
     <div class="starters">
       <button type="button">Which suppliers are below their on-time delivery target?</button>
       <button type="button">Review the Meridian Data Services document</button>
       <button type="button">Review Coastal Analytics and take care of its open items</button>
     </div>
-    <p class="samples">Or upload your own supplier document. Samples: <a href="samples/harbor-view-packaging.md" download>a normal review</a>, <a href="samples/northstar-freight.md" download>one with hidden instructions</a>.</p>
   </div>
 </template>
 

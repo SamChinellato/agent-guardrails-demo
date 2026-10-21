@@ -593,3 +593,7 @@ The gateway and the models are still described by what they do (D-045).
 ## D-050: "How it works" is the generated diagram again (supersedes D-049)
 
 At the operator's request, the clickable architecture page is gone. The console's **How it works** link opens the `diagrams` PNG at `/console/architecture.png`, and the diagram's labels again say what each part does, as in D-048.
+
+## D-051: The empty chat shows only the heading and starter prompts
+
+At the operator's request, the empty chat no longer has the researcher's introduction or the sample-document links. The samples are still served at `/console/samples/` (D-047), and `DEMO_SCRIPT.md` gives their address.

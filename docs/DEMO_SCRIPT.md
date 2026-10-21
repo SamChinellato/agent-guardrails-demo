@@ -57,7 +57,7 @@ Press **New chat** in the console before you start, and turn on **Monitoring** i
 
 ### 3b. Optional: your own document
 
-**Do:** click **Upload** and choose `northstar-freight.md` (download it from the link on the empty chat, or from `http://<host>:8080/console/samples/northstar-freight.md`). Send the suggested message, *Review the document I uploaded (upload-01)*.
+**Do:** click **Upload** and choose `northstar-freight.md` (download it first from `http://<host>:8080/console/samples/northstar-freight.md`). Send the suggested message, *Review the document I uploaded (upload-01)*.
 
 **Show:** the *A document was withheld* notice. This answer comes from the live model, so it takes about 20 s.
 
