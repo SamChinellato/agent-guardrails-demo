@@ -28,11 +28,15 @@
     },
     "loki-logger": {
       "endpoint_addrs": [
-        "http://loki.${NS_OBS}.svc.cluster.local:3100"
+        "${LOKI_URL}"
       ],
+      "endpoint_uri": "${LOKI_PUSH_PATH}",
+      "headers": "${LOKI_HEADERS}",
       "log_labels": {
         "service_name": "apisix",
-        "route_id": "$route_id"
+        "route_id": "$route_id",
+        "kubernetes_namespace_name": "${NS_GATEWAY}",
+        "k8s_namespace_name": "${NS_GATEWAY}"
       },
       "log_format": {
         "level": "info",

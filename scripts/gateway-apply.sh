@@ -10,7 +10,9 @@
 #   LLM_MODE                      mock | live (selects gateway/upstreams/llm.<mode>.json)
 #   CONSUMER_KEY_DEMO_USER, CONSUMER_KEY_RESEARCHER, CONSUMER_KEY_EXECUTOR, CONSUMER_KEY_PROBE
 #   OLLAMA_MODEL, OLLAMA_SEED, OLLAMA_URL   the live LLM (template variables)
-#   NS_AI, NS_OBS                 the ai and observability namespaces (service addresses)
+#   NS_AI, NS_OBS, NS_GATEWAY     the demo namespaces (service addresses, log labels)
+#   LOKI_URL, LOKI_PUSH_PATH      where APISIX's loki-logger pushes access logs
+#   LOKI_HEADERS                  its request headers, as a JSON object ({} for none)
 #
 # Templates: a string that is exactly "${VAR}" becomes VAR's typed value (string, number
 # or object); "${VAR}" inside a longer string, or in an object key, is interpolated.
@@ -23,7 +25,8 @@ set -euo pipefail
 declare -F log >/dev/null || log() { printf '==> %s\n' "$*"; }
 declare -F die >/dev/null || die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 for v in ADMIN_URL ADMIN_KEY GW LLM_MODE CONSUMER_KEY_DEMO_USER CONSUMER_KEY_RESEARCHER \
-         CONSUMER_KEY_EXECUTOR CONSUMER_KEY_PROBE OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL NS_AI NS_OBS; do
+         CONSUMER_KEY_EXECUTOR CONSUMER_KEY_PROBE OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL NS_AI NS_OBS \
+         NS_GATEWAY LOKI_URL LOKI_PUSH_PATH LOKI_HEADERS; do
   [[ -n "${!v:-}" ]] || die "gateway-apply: $v is not set"
 done
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -39,10 +42,12 @@ vars="$(jq -n \
   --arg dk "$CONSUMER_KEY_DEMO_USER" --arg rk "$CONSUMER_KEY_RESEARCHER" \
   --arg ek "$CONSUMER_KEY_EXECUTOR" --arg pk "$CONSUMER_KEY_PROBE" \
   --arg model "$OLLAMA_MODEL" --argjson seed "$OLLAMA_SEED" --arg url "$OLLAMA_URL" \
-  --arg nsai "$NS_AI" --arg nsobs "$NS_OBS" \
+  --arg nsai "$NS_AI" --arg nsobs "$NS_OBS" --arg nsgw "$NS_GATEWAY" \
+  --arg lokiurl "$LOKI_URL" --arg lokipath "$LOKI_PUSH_PATH" --argjson lokihdr "$LOKI_HEADERS" \
   '{CONSUMER_KEY_DEMO_USER: $dk, CONSUMER_KEY_RESEARCHER: $rk, CONSUMER_KEY_EXECUTOR: $ek,
     CONSUMER_KEY_PROBE: $pk, OLLAMA_MODEL: $model, OLLAMA_SEED: $seed, OLLAMA_URL: $url,
-    NS_AI: $nsai, NS_OBS: $nsobs}')"
+    NS_AI: $nsai, NS_OBS: $nsobs, NS_GATEWAY: $nsgw,
+    LOKI_URL: $lokiurl, LOKI_PUSH_PATH: $lokipath, LOKI_HEADERS: $lokihdr}')"
 
 RENDER='
   def var($n): if $vars | has($n) then $vars[$n] else error("template variable \($n) is not set") end;

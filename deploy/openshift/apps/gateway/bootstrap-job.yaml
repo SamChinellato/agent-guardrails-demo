@@ -42,6 +42,8 @@ spec:
                 curl -sf -o /dev/null -H "X-API-KEY: $ADMIN_KEY" "$ADMIN_URL/apisix/admin/routes" && break
                 sleep 2
               done
+              # loki-logger authenticates to the LokiStack gateway with the writer's token
+              export LOKI_HEADERS="{\"Authorization\": \"Bearer $LOKI_TOKEN\"}"
               exec /usr/local/bin/gateway-apply.sh
           env:
             - {name: ADMIN_URL, value: "http://apisix-admin.aigw-gateway.svc.cluster.local:9180"}
@@ -63,6 +65,13 @@ spec:
             - {name: OLLAMA_URL, value: "http://llamacpp.aigw-ai.svc.cluster.local:8000"}
             - {name: NS_AI, value: aigw-ai}
             - {name: NS_OBS, value: aigw-observability}
+            - {name: NS_GATEWAY, value: aigw-gateway}
+            # APISIX access logs (OS-01): the LokiStack gateway, application tenant, as the
+            # write-only apisix-log-writer (../../platform/telemetry.yaml)
+            - {name: LOKI_URL, value: "https://loki-gateway-http.aigw-observability.svc.cluster.local:8080"}
+            - {name: LOKI_PUSH_PATH, value: /api/logs/v1/application/loki/api/v1/push}
+            - name: LOKI_TOKEN
+              valueFrom: {secretKeyRef: {name: apisix-log-writer-token, key: token}}
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 500m, memory: 256Mi}
