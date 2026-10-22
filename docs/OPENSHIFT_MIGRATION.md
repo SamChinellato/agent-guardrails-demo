@@ -1,6 +1,6 @@
 # OpenShift migration plan
 
-**Status: draft, rounds 1–3 answered (OS-01 to OS-12); remaining questions below.** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
+**Status: draft, all planning questions answered (OS-01 to OS-14); spikes and implementation next.** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
 
 ## Goal
 
@@ -34,7 +34,7 @@ Constraint: the telemetry stack (metrics, alerts, traces, logs, dashboards) must
 | Exposure | NodePorts mapped to host ports 8080/3000/8090/9090/9093/8099 | Edge-TLS Routes; demo UIs behind OpenShift OAuth proxy, the rest by port-forward (**OS-04**) | M |
 | Console → Grafana link | Built from `GRAFANA_PORT` | Built from a full `GRAFANA_URL` (small code change) | S |
 | CLI and tests | Reach `127.0.0.1:<port>` | Read base URLs from settings (Route hosts), falling back to localhost so k3d still works | M |
-| Evidence viewer | `hostPath` from the laptop's `evidence/` | No hostPath. Options: PVC + `oc cp` after `make evidence`, or drop the in-cluster viewer and serve locally (see **Q-7**) | S |
+| Evidence viewer | `hostPath` from the laptop's `evidence/` | No in-cluster viewer. `make ui UI=evidence` serves `evidence/` read-only from the presenter's machine; bundles never leave it (**OS-13**) | S |
 | NetworkPolicies | k3s kube-router; DNS in `kube-system` | OVN-K. DNS selectors move to `openshift-dns` (port **5353**); allow ingress from the router (`policy-group.network.openshift.io/ingress`); API server egress to the control-plane IPs on 6443 | M |
 | APISIX Admin allow-list | `10.42.0.0/16` | `10.128.0.0/14` | S |
 | Policy hot reload (GRD-02, 10 s) | kubelet `sync-frequency=5s` | `k8s-sidecar` in the guard pod watches the ConfigMap through the API and writes it to a shared `emptyDir`; guard code unchanged (**OS-05**, [Policy hot reload](#policy-hot-reload-os-05)) | S |
@@ -135,7 +135,7 @@ The cluster-wide `openshift-gitops` instance, installed by the OpenShift GitOps 
 - The demo namespaces carry `argocd.argoproj.io/managed-by: openshift-gitops`.
 - The default instance can't create everything we need cluster-wide (operator `Subscription`s, CRDs, `ClusterRole`s, SCC bindings). Two options: a small `ClusterRole` bound to its application controller for just those kinds, or a cluster-admin bootstrap step by `make up` (subscriptions and the GitOps operator itself) before Argo takes over. Decided in workstream 1.
 - One root Application per target environment (app-of-apps): `aigw-platform` (operators, namespaces), `aigw-telemetry`, `aigw-workloads`, `aigw-gateway-config`.
-- Argo pulls from this repository's GitHub remote; access for a private repository is a read-only deploy key added by `make` as a repository Secret (out of band, like other secrets). Branch: see **Q-14**.
+- Argo pulls from this repository's GitHub remote; access for a private repository is a read-only deploy key added by `make` as a repository Secret (out of band, like other secrets). Branch: `main` (**OS-14**). While this work is on `openshift-migration`, `make up TARGET=openshift GITOPS_REVISION=<branch>` points the root Application at the branch for testing.
 
 ### Namespaces (OS-12)
 
@@ -168,10 +168,20 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 - **Demo timings.** 5 s scrape/evaluation and the 10 s reload bound must still hold.
 - **TechZone lifetime.** The reservation expires; the plan should rebuild from scratch on a fresh cluster with one command.
 
+## Spikes before implementation
+
+Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted afterwards:
+
+1. **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
+2. **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
+3. **APISIX logs:** `loki-logger` against the LokiStack gateway, or `http-logger` to the collector.
+4. **vLLM CPU:** dtype on AVX-512 without BF16, tokens per second, Granite tool calling through the gateway's `ai-proxy`.
+5. **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.
+6. **openshift-gitops permissions:** what the default instance can create cluster-wide, and the smallest grant for the rest.
+
 ## Open questions
 
-- **Q-7** Evidence viewer.
-- **Q-14** Which branch Argo CD tracks (e.g. `main`, or a `deploy/openshift` branch), and whether the GitHub repository is private (deploy key needed).
+None at the moment. New ones will be added here as spikes turn them up.
 
 ## Decisions
 
@@ -187,3 +197,5 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 - **OS-10 (Q-12) Gateway bootstrap runs as an Argo `PostSync` Job** in-cluster, keeping the drift check and kill-state preservation. Its Admin API access is limited by NetworkPolicy to that Job and the killswitch. k3d keeps the port-forward.
 - **OS-11 (Q-13) The cluster-wide `openshift-gitops` Argo CD instance**, with demo namespaces labelled `managed-by` and the extra cluster-scoped permissions it needs granted narrowly.
 - **OS-12 (Q-8) OpenShift namespaces are prefixed `aigw-`**; k3d keeps the short names.
+- **OS-13 (Q-7) Evidence is served locally** by `make ui UI=evidence`; no in-cluster viewer on OpenShift.
+- **OS-14 (Q-14) Argo CD tracks `main`** of the private GitHub repository through a read-only deploy key added out of band; the branch can be overridden for testing.
