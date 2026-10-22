@@ -119,6 +119,9 @@ spec:
     # Auto-trip (F5)
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: gateway}}, podSelector: {matchLabels: {app: killswitch}}}]
       ports: [{port: 8000, protocol: TCP}]
+    # policy-sync reads the guard-policy ConfigMap (GRD-02, OS-05)
+    - to: [{ipBlock: {cidr: "${APISERVER_EGRESS}"}}]
+      ports: [{port: 6443, protocol: TCP}]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

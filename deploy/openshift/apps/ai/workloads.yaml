@@ -23,6 +23,9 @@ spec:
             - {name: KILLSWITCH_URL, value: "http://killswitch.aigw-gateway.svc.cluster.local:8000"}
             - {name: MCP_DOCS_URL, value: "http://mcp-docs.aigw-ai.svc.cluster.local:8000/mcp"}
             - {name: MCP_ACTIONS_URL, value: "http://mcp-actions.aigw-ai.svc.cluster.local:8000/mcp"}
+        - name: policy-sync
+          # K8S_SIDECAR_IMAGE@K8S_SIDECAR_DIGEST (REP-02, make openshift-check)
+          image: quay.io/kiwigrid/k8s-sidecar:2.11.2@sha256:2912be006f62f9ea080194cf6d3afcd90daead8d101d0ba686a137a849f6a4f6
 ---
 apiVersion: apps/v1
 kind: Deployment

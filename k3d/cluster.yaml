@@ -39,10 +39,6 @@ options:
         nodeFilters: [server:*]
       - arg: --disable=servicelb
         nodeFilters: [server:*]
-      # Mounted ConfigMaps refresh within ~5 s instead of ~1 min, so a policy change
-      # reaches the guard inside the 10 s hot-reload bound (GRD-02, D-028)
-      - arg: --kubelet-arg=sync-frequency=5s
-        nodeFilters: [server:*]
   kubeconfig:
     updateDefaultKubeconfig: false
     switchCurrentContext: false

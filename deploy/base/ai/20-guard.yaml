@@ -1,5 +1,28 @@
-# Guard (7.3). ${GUARD_IMAGE} is substituted by scripts/up.sh. The policy ConfigMap is
-# mounted as a directory (not subPath) so kubelet updates it in place (GRD-02 hot reload).
+# Guard (7.3). ${GUARD_IMAGE} is substituted by scripts/up.sh.
+# Policy hot reload (GRD-02, OS-05): the policy-sync sidecar (k8s-sidecar) reads the
+# guard-policy ConfigMap through the API every 2 s and writes it to an emptyDir that the
+# guard polls every second. A mounted ConfigMap would wait for the kubelet's sync (60-90 s
+# on OpenShift). Only the sidecar gets an API token, allowed to `get` that one ConfigMap.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: guard, namespace: ai}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: guard-policy-reader, namespace: ai}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [guard-policy]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: guard-policy-reader, namespace: ai}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: guard-policy-reader}
+subjects: [{kind: ServiceAccount, name: guard, namespace: ai}]
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -25,7 +48,8 @@ spec:
     metadata:
       labels: {app: guard}
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: guard
+      automountServiceAccountToken: false   # only policy-sync mounts a token (below)
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -64,8 +88,38 @@ spec:
           volumeMounts:
             - {name: policy, mountPath: /policy, readOnly: true}
             - {name: tmp, mountPath: /tmp}
+        - name: policy-sync
+          image: ${K8S_SIDECAR_IMAGE}@${K8S_SIDECAR_DIGEST}
+          env:
+            # One named ConfigMap in this namespace: k8s-sidecar then polls it with `get`
+            # (no list or watch) every SLEEP_TIME seconds. LABEL is required but unused here.
+            - {name: RESOURCE, value: configmap}
+            - {name: RESOURCE_NAME, value: guard-policy}
+            - name: NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - {name: LABEL, value: unused}
+            - {name: FOLDER, value: /policy}
+            - {name: SLEEP_TIME, value: "2"}
+            - {name: HEALTH_PORT, value: "8081"}
+          resources:
+            requests: {cpu: 10m, memory: 48Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: policy, mountPath: /policy}
+            - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
       volumes:
         - name: policy
-          configMap: {name: guard-policy}
+          emptyDir: {}
         - name: tmp
           emptyDir: {}
+        # What automountServiceAccountToken would give every container, for policy-sync only
+        - name: kube-api-access
+          projected:
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 3600}
+              - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+              - downwardAPI: {items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]}

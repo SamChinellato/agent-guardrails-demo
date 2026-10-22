@@ -96,6 +96,7 @@ render_manifest() {
       -e "s|\${AGENTS_IMAGE}|$REGISTRY_PULL/agents:$AGENTS_TAG|g" \
       -e "s|\${CONSOLE_IMAGE}|$REGISTRY_PULL/console:$CONSOLE_TAG|g" \
       -e "s|\${KILLSWITCH_IMAGE}|$REGISTRY_PULL/killswitch:$KILLSWITCH_TAG|g" \
+      -e "s|\${K8S_SIDECAR_IMAGE}|$K8S_SIDECAR_IMAGE|g" -e "s|\${K8S_SIDECAR_DIGEST}|$K8S_SIDECAR_DIGEST|g" \
       -e "s|\${LLM_MODEL}|$llm_model|g" \
       -e "s|\${HOST_PORT_GRAFANA}|$HOST_PORT_GRAFANA|g" "$1"
 }
