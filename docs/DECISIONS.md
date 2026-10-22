@@ -272,6 +272,8 @@ An external model can implement `Decider` and run in front of, alongside, or ins
 
 ## D-028 Policy hot reload: kubelet `sync-frequency=5s` (P3)
 
+*Superseded by D-059: a sidecar now reads the policy through the API on both targets.*
+
 The guard watches its mounted policy file and reloads within about 1 s of the file changing. Kubelet, though, refreshes mounted ConfigMaps only on its sync period, about 1 minute by default, which would break the 10 s bound (GRD-02). The cluster is created with `--kubelet-arg=sync-frequency=5s` (`k3d/cluster.yaml`). The ConfigMap is mounted as a directory, not `subPath`, so updates propagate.
 
 - **Measured:** `make policy-set` to the new behaviour at the gateway took 4.2 s (`test_policy_hot_reload_within_10s_and_monitor_mode_flags`).
@@ -680,3 +682,14 @@ The Admin API itself is the same one the proxy forwards to, so anyone through OA
 - **Grafana's plugin preinstall is off.** Grafana 13 replaces its bundled Prometheus, Loki and Tempo plugins with downloads from grafana.com in the background; under the operator the plugin directory is read-only, so the replacement fails after stopping the bundled plugin, which is then unregistered. `[plugins] preinstall_disabled` keeps the plugins in the pinned image (and avoids unpinned runtime downloads).
 - **Datasources and dashboards resync every minute.** The operator's Grafana keeps its database on an emptyDir, so a restart empties it until the next resync (10 min by default).
 - **Verified 2026-10-22.** Prometheus: 13 targets up, the four kill-switch rules every 5 s. A request through the public gateway Route appears in Loki (APISIX access log with its trace ID) and in Tempo (APISIX → guard → mock LLM). Grafana: Prometheus, Loki and Tempo health OK and queries return data, four dashboards; behind OAuth at `aigw-grafana.<domain>`. (The Alertmanager datasource has no health check, on k3d too.)
+
+## D-059: Policy hot reload through a sidecar on both targets (OS-05, workstream 4)
+
+The guard used to mount `guard-policy` as a ConfigMap volume, so a change waited for the kubelet's sync. On k3d that took about 5 s with `sync-frequency=5s` (D-028). On OpenShift it takes 60–90 s, outside the 10 s bound (GRD-02).
+
+- **Sidecar.** The guard pod has a `policy-sync` container (k8s-sidecar, the image already pinned for Grafana). It reads `guard-policy` by name every 2 s and writes `policy.yaml` to an emptyDir at `/policy`. The guard still polls that file each second, so the guard code is unchanged, including keeping the previous policy when a file is bad.
+- **Least privilege.** The pod keeps `automountServiceAccountToken: false`. Only `policy-sync` mounts a projected token, through its own volume. ServiceAccount `guard` has a Role that allows `get` on that one ConfigMap. With `RESOURCE_NAME` set, k8s-sidecar uses `get` rather than list and watch; its required `LABEL` is set but not used.
+- **Network.** The guard has API server egress. On k3d that is `guard-egress`, the same ipBlock as the console. On OpenShift it is `apiserver-egress`, applied by `apiserver-egress.sh`.
+- **Both targets.** k3d does the same, so `k3d/cluster.yaml` no longer passes the kubelet argument. A cluster created before this change keeps the argument until it is recreated, which does no harm.
+- **Argo CD and pinned images.** The Application ignores Deployment images that image triggers rewrite. A pinned container is excluded from that rule by name (`policy-sync`), otherwise a new container's image is dropped and the Deployment is rejected. The selector has to be true on both the desired and the live object, so it uses the container name rather than the image, which a trigger rewrites to another registry's digest.
+- **Verified 2026-10-22 on OpenShift.** Each change was a ConfigMap patch, timed until the guard logged `policy loaded`: 2.9 s and 1.4 s.

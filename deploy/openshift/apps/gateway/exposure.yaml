@@ -104,6 +104,7 @@ spec:
             - --openshift-service-account=console-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
             - --cookie-secure=true
+            - --pass-basic-auth=false   # else the OpenShift user arrives as a failed Basic login upstream
             - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
           ports: [{name: http, containerPort: 8080}]
           readinessProbe:
@@ -174,6 +175,7 @@ spec:
             - --openshift-service-account=killswitch-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
             - --cookie-secure=true
+            - --pass-basic-auth=false   # else the OpenShift user arrives as a failed Basic login upstream
             - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
           ports: [{name: http, containerPort: 8080}]
           readinessProbe:
@@ -245,6 +247,7 @@ spec:
             - --openshift-service-account=apisix-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
             - --cookie-secure=true
+            - --pass-basic-auth=false   # else the OpenShift user arrives as a failed Basic login upstream
             - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
           ports: [{name: http, containerPort: 8080}]
           readinessProbe:

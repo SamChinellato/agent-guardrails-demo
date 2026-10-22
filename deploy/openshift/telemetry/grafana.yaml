@@ -45,7 +45,8 @@ spec:
                 # The operator manages the instance with these credentials too
               resources:
                 requests: {cpu: 50m, memory: 128Mi}
-                limits: {cpu: "1", memory: 512Mi}
+                # 512Mi was OOMKilled opening the decision-trail dashboard (Loki and Tempo panels)
+                limits: {cpu: "1", memory: 1Gi}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDatasource

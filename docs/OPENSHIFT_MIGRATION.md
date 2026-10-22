@@ -37,7 +37,7 @@ Constraint: the telemetry stack (metrics, alerts, traces, logs, dashboards) must
 | Evidence viewer | `hostPath` from the laptop's `evidence/` | No in-cluster viewer. `make ui UI=evidence` serves `evidence/` read-only from the presenter's machine; bundles never leave it (**OS-13**) | S |
 | NetworkPolicies | k3s kube-router; DNS in `kube-system` | OVN-K. DNS selectors move to `openshift-dns` (port **5353**); allow ingress from the router (`policy-group.network.openshift.io/ingress`); API server egress to the control-plane IPs on 6443 | M |
 | APISIX Admin allow-list | `10.42.0.0/16` | `10.128.0.0/14` | S |
-| Policy hot reload (GRD-02, 10 s) | kubelet `sync-frequency=5s` | `k8s-sidecar` in the guard pod watches the ConfigMap through the API and writes it to a shared `emptyDir`; guard code unchanged (**OS-05**, [Policy hot reload](#policy-hot-reload-os-05)) | S |
+| Policy hot reload (GRD-02, 10 s) | kubelet `sync-frequency=5s` | `k8s-sidecar` in the guard pod reads the ConfigMap through the API every 2 s and writes it to a shared `emptyDir`; guard code unchanged (**OS-05**, D-059, [Policy hot reload](#policy-hot-reload-os-05)) | S |
 | Live LLM | Ollama on the host | llama.cpp in-cluster serving the 4-bit Granite 4.0 Micro GGUF on CPU (**OS-16**, superseding vLLM in OS-03) | L |
 | Telemetry | kube-prometheus-stack (own operator + CRDs), Tempo, Loki, OTel Collector, Grafana via Helm | Red Hat operators: COO, Tempo, Loki, OpenTelemetry; Grafana Operator (**OS-01**, [Telemetry](#telemetry)) | L |
 | Version pins | `versions.env` | Add new images/charts/operator channels; k3d-only pins stay for the local path | S |
@@ -156,12 +156,12 @@ The guard decides on content; APISIX only enforces its verdict (see `docs/DETECT
 
 ```
 guard pod
-├── k8s-sidecar   watches ConfigMap guard-policy through the API ──► writes /policy/policy.yaml (emptyDir)
+├── policy-sync   (k8s-sidecar) gets ConfigMap guard-policy every 2 s ──► writes /policy/policy.yaml (emptyDir)
 └── guard         PolicyStore polls /policy/policy.yaml every 1 s (unchanged)
 ```
 
 - **Guard code unchanged.** Parsing, validation and "keep the previous policy on a bad file" stay where they are; the guard doesn't know about Kubernetes.
-- **Least privilege.** `automountServiceAccountToken: false` stays on the pod. Only the sidecar container mounts a projected service-account token. Its Role allows `get`/`list`/`watch` on `configmaps` named `guard-policy` in `ai`.
+- **Least privilege.** `automountServiceAccountToken: false` stays on the pod. Only the sidecar container mounts a projected service-account token. Its Role allows `get` on the ConfigMap `guard-policy` only: with `RESOURCE_NAME` and `NAMESPACE` set, k8s-sidecar reads that one object by name every `SLEEP_TIME` seconds instead of listing and watching by label, so no label and no `list`/`watch` are needed.
 - **NetworkPolicy.** The guard pod gains egress to the API server on 6443 (the control-plane IPs), like the console.
 - **Both targets.** The same on k3d, so the kubelet `sync-frequency=5s` argument can leave `k3d/cluster.yaml`.
 - **Image.** `K8S_SIDECAR_IMAGE` in `versions.env`, already pinned for Grafana.
@@ -233,7 +233,7 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the Application (**done**: `aigw-workloads`, first sync verified 2026-10-22); BuildConfigs and ImageStreams (**done**). An app-of-apps root comes when there is more than one Application.
 2. **Platform fit.** `restricted-v2` (**done**: every workload runs with an assigned UID, no exceptions so far), NetworkPolicies for OVN-K (**done**, verified by `scripts/openshift/verify-netpol.sh`), Admin allow-list (**done**), Routes with oauth-proxy (**done** for the gateway API, console and kill-switch panel; Grafana with workstream 3), evidence viewer replacement (OS-13: `make ui UI=evidence`, workstream 6). See D-056.
 3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the evidence CLI's readers. The console's Grafana link and trace view ("Where it went") are done: it reads tenant `demo` through the Tempo gateway with its own pod token and the service CA, allowed by ClusterRoleBinding `aigw-console-tempo-reader` (`platform.sh`).
-4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
+4. **Policy hot reload.** **Done** (D-059): the `policy-sync` sidecar on both targets; k3d no longer sets `sync-frequency=5s`. OpenShift reloads in 1.4–2.9 s (was 60–90 s).
 5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
 6. **Operator tooling.** CLI and tests read Route URLs; `make status` / `logs` / `ui` on OpenShift.
 7. **Verification.** `make up` twice (idempotent), `make test` green on OpenShift, `make demo-all`, an evidence bundle that verifies, `verify-netpol.sh` passing on OVN-K. Record deviations as D-0xx in `DECISIONS.md`.
