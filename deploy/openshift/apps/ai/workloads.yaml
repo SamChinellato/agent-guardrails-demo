@@ -133,7 +133,12 @@ spec:
             - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
             - {name: KILLSWITCH_URL, value: "http://killswitch.aigw-gateway.svc.cluster.local:8000"}
             - {name: PROMETHEUS_URL, value: "http://aigw-prometheus.aigw-observability.svc.cluster.local:9090"}
-            # The Grafana link and the trace reader (TEMPO_URL, bearer token) need code
-            # changes (workstream 6); until then the link is wrong and the trace view empty
-            - {name: GRAFANA_PORT, value: "443"}
+            # "Decision details" opens aigw-grafana.<the console's domain> (OS-04)
+            - {name: GRAFANA_SUBDOMAIN, value: aigw-grafana}
+            # "Where it went" reads tenant "demo" through the Tempo gateway with the pod's own
+            # token (ClusterRoleBinding aigw-console-tempo-reader, platform/telemetry.yaml) and
+            # checks its certificate against the service CA OpenShift mounts beside the token
+            - {name: TEMPO_URL, value: "https://tempo-tempo-gateway.aigw-observability.svc.cluster.local:8080/api/traces/v1/demo/tempo"}
+            - {name: TEMPO_TOKEN_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/token}
+            - {name: TEMPO_CA_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}

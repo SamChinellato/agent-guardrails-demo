@@ -21,6 +21,8 @@ log = get_logger("console")
 GATEWAY = os.environ.get("GATEWAY_URL", "http://apisix-gateway.gateway.svc.cluster.local").rstrip("/")
 KEY = os.environ.get("DEMO_USER_KEY", "")
 GRAFANA_PORT = os.environ.get("GRAFANA_PORT", "3000")
+# OpenShift (OS-04): Grafana has its own Route host, <subdomain>.<the console's domain>
+GRAFANA_SUBDOMAIN = os.environ.get("GRAFANA_SUBDOMAIN", "")
 ROGUE_SCENARIO = os.environ.get("ROGUE_SCENARIO", "s6-rogue:scripted")
 ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "120"))
 PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
@@ -63,7 +65,7 @@ async def upload(request: Request) -> JSONResponse:
 
 @app.get("/", response_class=HTMLResponse)
 async def page() -> HTMLResponse:
-    return HTMLResponse(PAGE.replace("{{GRAFANA_PORT}}", GRAFANA_PORT))
+    return HTMLResponse(PAGE.replace("{{GRAFANA_PORT}}", GRAFANA_PORT).replace("{{GRAFANA_SUBDOMAIN}}", GRAFANA_SUBDOMAIN))
 
 
 @app.post("/api/chat")

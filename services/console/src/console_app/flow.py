@@ -8,11 +8,17 @@ Links (all through the gateway):
 
 import asyncio
 import os
+import ssl
 import time
+from pathlib import Path
 
 import httpx
 
 TEMPO = os.environ.get("TEMPO_URL", "http://tempo.observability.svc.cluster.local:3200").rstrip("/")
+# OpenShift (OS-15): the Tempo gateway takes the pod's ServiceAccount token (re-read per call,
+# the kubelet rotates it) and serves a certificate from the service CA
+TEMPO_TOKEN_FILE = os.environ.get("TEMPO_TOKEN_FILE", "")
+TEMPO_CA_FILE = os.environ.get("TEMPO_CA_FILE", "")
 ROUTE_LINK = {"agent-researcher": "you-researcher", "agent-executor": "researcher-executor"}
 
 
@@ -31,16 +37,17 @@ def _link(route: str, consumer: str) -> str | None:
 
 async def _fetch(client: httpx.AsyncClient, trace_id: str) -> dict | None:
     try:  # a large trace still being written can time out; the caller simply tries again
-        r = await client.get(f"{TEMPO}/api/traces/{trace_id}")
+        headers = {"Authorization": f"Bearer {Path(TEMPO_TOKEN_FILE).read_text().strip()}"} if TEMPO_TOKEN_FILE else {}
+        r = await client.get(f"{TEMPO}/api/traces/{trace_id}", headers=headers)
         return r.json() if r.status_code == 200 else None
-    except (httpx.HTTPError, ValueError):
+    except (httpx.HTTPError, ValueError, OSError):
         return None
 
 
 async def flow(trace_id: str, settle_s: float = 10) -> dict:
     """Wait (bounded) until the trace stops growing, then summarise it."""
     deadline, last, data = time.monotonic() + settle_s, -1, None
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=20, verify=ssl.create_default_context(cafile=TEMPO_CA_FILE) if TEMPO_CA_FILE else True) as client:
         while time.monotonic() < deadline:
             data = await _fetch(client, trace_id)
             n = sum(len(ss["spans"]) for b in (data or {}).get("batches", []) for ss in b["scopeSpans"])

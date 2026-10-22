@@ -93,7 +93,7 @@ subjects: [{kind: ServiceAccount, name: loki-reader, namespace: aigw-observabili
 # from telemetry/tempo-rbac.yaml
 # Access to the Tempo gateway (OS-15): SubjectAccessReview on tempo.grafana.com/<tenant>
 # with resource name "traces". The collector writes; Grafana, the console and the
-# evidence CLI read (SA tempo-reader). One tenant, "demo", holds only demo traces.
+# evidence CLI read (SA tempo-reader; the console with its own SA). One tenant, "demo", holds only demo traces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata: {name: aigw-tempo-demo-writer}
@@ -126,6 +126,13 @@ kind: ClusterRoleBinding
 metadata: {name: aigw-tempo-reader}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-reader}
 subjects: [{kind: ServiceAccount, name: tempo-reader, namespace: aigw-observability}]
+---
+# The console's "Where it went" view reads a request's trace with its own pod token (D-046)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-console-tempo-reader}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-reader}
+subjects: [{kind: ServiceAccount, name: console, namespace: aigw-ai}]
 ---
 # Tempo's admission webhook lets an identity enable openshift tenancy only if it may create
 # tokenreviews itself (the gateway needs them). Argo CD's controller applies TempoMonolithic,

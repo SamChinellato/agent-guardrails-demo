@@ -172,7 +172,9 @@ const send = document.getElementById("send");
 const newChat = document.getElementById("newChat");
 const monitorBtn = document.getElementById("monitorBtn");
 const monitor = document.getElementById("monitor");
-const GRAFANA = `${location.protocol}//${location.hostname}:{{GRAFANA_PORT}}`;
+const GRAFANA = "{{GRAFANA_SUBDOMAIN}}"   // OpenShift: a sibling Route host; k3d: a host port
+  ? `${location.protocol}//{{GRAFANA_SUBDOMAIN}}.${location.hostname.split(".").slice(1).join(".")}`
+  : `${location.protocol}//${location.hostname}:{{GRAFANA_PORT}}`;
 let history = [];        // only messages that reached the assistant
 let selected = null;     // the exchange shown in Monitoring
 const flowCache = new Map();
