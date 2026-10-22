@@ -218,13 +218,14 @@ Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gate
 - **Pinned refs are written out in git** (etcd's `image@digest`). `scripts/openshift/check-overlay-pins.sh`, run by `make pin-check`, fails if any of them isn't the `versions.env` pair (REP-02).
 - **`make openshift-check`** runs both drift checks (overlay pins, root kustomization) with no cluster.
 - **Secrets** come from `gen-secrets.sh`, which now uses `NS_GATEWAY`/`NS_AI`/`NS_OBS` from `lib.sh` (prefixed `aigw-` on OpenShift); both targets share the values in `.secrets/`.
+- **First sync (2026-10-22, `8a6900b`).** Synced from `openshift-migration` with the deploy key. Every `aigw-ai` pod and etcd ready under `restricted-v2` (UIDs assigned by OpenShift); image triggers write the build digest into the pod spec and Argo stays Synced. The kill switch stays unready until APISIX exists (`apisix-admin` doesn't resolve).
 - **Not yet in the overlay:** NetworkPolicies (workstream 2), the gateway bootstrap Job (OS-10), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`), the Grafana URL and the console's Tempo token (workstream 6).
 
 ## Workstreams
 
 Phased so the demo keeps working on k3d throughout: OpenShift is a second **target**, chosen with `TARGET=openshift` (default `k3d`).
 
-1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the root Application (next); BuildConfigs and ImageStreams (**done**).
+1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the Application (**done**: `aigw-workloads`, first sync verified 2026-10-22); BuildConfigs and ImageStreams (**done**). An app-of-apps root comes when there is more than one Application.
 2. **Platform fit.** `restricted-v2` (image runs as any UID in group 0), NetworkPolicies for OVN-K, Admin allow-list, Routes with oauth-proxy, evidence viewer replacement.
 3. **Telemetry.** Operator subscriptions, then the CRs in [Telemetry](#telemetry), with dashboards, datasources and alert rules unchanged in content. Spikes first: LokiStack tenancy and OTLP ingest, COO Alertmanager config, APISIX logs.
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
