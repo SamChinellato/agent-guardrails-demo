@@ -6,7 +6,8 @@
 # The public key must be added to the GitHub repository as a read-only deploy key once;
 # the script prints it and where to add it.
 #
-# GITOPS_REVISION: the branch Argo follows (default main; a work branch for testing)
+# GITOPS_REVISION: the branch Argo follows. Default: the one the Applications already
+# follow, else main. (Re-running without it must not move a cluster off a work branch.)
 set -euo pipefail
 TARGET=openshift
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
@@ -15,7 +16,8 @@ require_openshift
 NS=openshift-gitops
 REPO="$(git -C "$ROOT" remote get-url origin)"
 [[ "$REPO" == git@* || "$REPO" == ssh://* ]] || die "origin ($REPO) isn't an SSH URL; the deploy key needs one"
-export GITOPS_REPO="$REPO" GITOPS_REVISION="${GITOPS_REVISION:-main}"
+current="$(oc -n "$NS" get application aigw-workloads -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
+export GITOPS_REPO="$REPO" GITOPS_REVISION="${GITOPS_REVISION:-${current:-main}}"
 
 KEY="$ROOT/.secrets/argocd-deploy-key"
 mkdir -p "$ROOT/.secrets"; chmod 700 "$ROOT/.secrets"
