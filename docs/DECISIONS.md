@@ -750,3 +750,13 @@ The Loki Operator creates a Route to its gateway on OpenShift (`loki-aigw-observ
 - **NetworkPolicy `loki-gateway`** (`aigw-observability`, under Argo CD) admits only the gateway's in-cluster clients: the collector and Grafana (same namespace), APISIX's `loki-logger` (D-058) from `aigw-gateway`, and platform monitoring on the metrics ports 8081 and 8083. On its own it did not close the Route: the router runs on the host network on every worker, and OVN-Kubernetes always admits a node's host network to pods on that node (kubelet probes), so a router reached the gateway pod on its own node. It stays as defence in depth for pod traffic.
 
 `scripts/openshift/verify-netpol.sh` checks that the Route answers nothing. Port-forward isn't subject to either, so the evidence CLI's planned reader (workstream 6) still works. Verified 2026-10-23: the Route refuses connections; APISIX access logs and the guard's decision records (via the collector) still reach Loki, and Grafana reads them.
+
+## D-064: OpenShift Routes land on their app's page
+
+Every demo Route opens its page at the host root. Grafana and the kill-switch panel already lived at `/`. The console (`/console/` on APISIX) and the APISIX dashboard (`/ui/` on the Admin API) answered 404 there. A Route can't redirect, so their OAuth proxies now route by path (`deploy/openshift/apps/gateway/exposure.yaml`):
+
+- **Console** (`aigw-console.<domain>`): only `/console/` goes to APISIX. The console's page and API are all relative, so they stay under it. The other gateway paths (`/llm`, `/agents`, ...) are no longer reachable through this host; they have their own key-auth Routes.
+- **APISIX dashboard** (`aigw-apisix.<domain>`): only `/ui/` (the dashboard) and `/apisix/` (the Admin API it calls) go to the Admin API.
+- **Root**: `/` on both serves a one-line page from ConfigMap `route-landing` that forwards to the app (`file://` upstream). Any other path is a 404 from the proxy.
+
+Tested before rollout with the same oauth-proxy (public origin build, auth skipped) against port-forwards of the real services: the landing pages, `/ui` → `/ui/`, the dashboard assets, `/apisix/admin` (401 without a key, as before), and `/console/` with the architecture image.

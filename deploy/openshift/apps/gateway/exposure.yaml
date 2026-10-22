@@ -93,6 +93,17 @@ spec:
   port: {targetPort: http}
   tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
 ---
+# Landing pages: a Route can't redirect, so each OAuth proxy whose app doesn't live at "/"
+# serves a one-line page there that sends the browser on (D-064)
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: route-landing, namespace: aigw-gateway}
+data:
+  console.html: |
+    <!doctype html><meta http-equiv="refresh" content="0; url=/console/"><a href="/console/">Console</a>
+  apisix.html: |
+    <!doctype html><meta http-equiv="refresh" content="0; url=/ui/"><a href="/ui/">APISIX dashboard</a>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -118,7 +129,9 @@ spec:
             - --provider=openshift
             - --http-address=:8080
             - --https-address=
-            - --upstream=http://apisix-gateway.aigw-gateway.svc.cluster.local:80
+            # The console only (its page and API are under /console/); "/" is the landing page
+            - --upstream=http://apisix-gateway.aigw-gateway.svc.cluster.local:80/console/
+            - --upstream=file:///landing/#/
             - --upstream-timeout=10m   # long story prompts; default 30s (see the Route)
             - --openshift-service-account=console-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
@@ -138,9 +151,12 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+            - {name: landing, mountPath: /landing, readOnly: true}
       volumes:
         - name: cookie
           secret: {secretName: oauth-proxy-cookie}
+        - name: landing
+          configMap: {name: route-landing, items: [{key: console.html, path: index.html}]}
 # --------------------------------------------------------------------------- kill-switch panel
 ---
 apiVersion: v1
@@ -262,7 +278,10 @@ spec:
             - --provider=openshift
             - --http-address=:8080
             - --https-address=
-            - --upstream=http://apisix-admin.aigw-gateway.svc.cluster.local:9180
+            # The dashboard (/ui/) and the Admin API it calls (/apisix/admin); "/" is the landing page
+            - --upstream=http://apisix-admin.aigw-gateway.svc.cluster.local:9180/ui/
+            - --upstream=http://apisix-admin.aigw-gateway.svc.cluster.local:9180/apisix/
+            - --upstream=file:///landing/#/
             - --openshift-service-account=apisix-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
             - --cookie-secure=true
@@ -281,6 +300,9 @@ spec:
             capabilities: {drop: [ALL]}
           volumeMounts:
             - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+            - {name: landing, mountPath: /landing, readOnly: true}
       volumes:
         - name: cookie
           secret: {secretName: oauth-proxy-cookie}
+        - name: landing
+          configMap: {name: route-landing, items: [{key: apisix.html, path: index.html}]}

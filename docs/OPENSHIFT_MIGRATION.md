@@ -146,11 +146,12 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 
 | Endpoint | Route | Auth |
 |---|---|---|
-| Console (`/console` on APISIX) | `console-…` edge TLS → oauth-proxy → APISIX | OpenShift OAuth; plus the console's own controls as today |
+| Console (`/console` on APISIX) | `aigw-console.<domain>` edge TLS → oauth-proxy → APISIX `/console/` only; `/` forwards to `/console/` (D-064) | OpenShift OAuth; plus the console's own controls as today |
 | Gateway API (CLI, tests) | `gateway-…` edge TLS → APISIX directly | Consumer keys (key-auth) as today. Not behind OAuth, so the CLI and tests keep working. |
 | Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
-| Prometheus, Alertmanager, evidence, APISIX Admin | none | `make ui UI=…` / `make admin-ui` port-forward |
+| APISIX dashboard | `aigw-apisix.<domain>` edge TLS → oauth-proxy → Admin API `/ui/` and `/apisix/` only; `/` forwards to `/ui/` (D-057, D-064) | OpenShift OAuth, then the viewer or admin key as today |
+| Prometheus, Alertmanager, evidence | none | `make ui UI=…` port-forward |
 | Loki gateway | `loki-aigw-observability.<domain>`, created by the Loki Operator and not removable | Closed: a router allowlist that admits no client (`loki-route.sh`), plus NetworkPolicy `loki-gateway` (D-063) |
 
 Hosts (from `subdomain`, so the same on any cluster): `aigw-gateway.<domain>` (only `/llm`, `/mcp`, `/agents`, `/demo`), `aigw-console.<domain>/console`, `aigw-killswitch.<domain>`. Verified 2026-10-22 (D-056).

@@ -14,10 +14,11 @@
 
 | Screen | k3d | OpenShift (`<domain>`: the cluster's apps domain) | Use |
 | --- | --- | --- | --- |
-| Console | `http://<host>:8080/console` | `https://aigw-console.<domain>/console` (OpenShift login) | The audience watches this |
+| Console | `http://<host>:8080/console` | `https://aigw-console.<domain>` (OpenShift login) | The audience watches this |
 | Architecture | `http://<host>:8080/console/architecture.png` | `https://aigw-console.<domain>/console/architecture.png` | Opening slide (also the **How it works** link in the console) |
 | Grafana | `http://<host>:3001` | `https://aigw-grafana.<domain>` (OpenShift login) | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
 | Kill switch | `http://<host>:8090` | `https://aigw-killswitch.<domain>` (OpenShift login) | Token: `cat .secrets/killswitch-operator-token` |
+| APISIX dashboard | `make admin-ui` (`http://127.0.0.1:9180/ui/`) | `https://aigw-apisix.<domain>` (OpenShift login, then the viewer key) | Optional: the gateway's routes and plugins |
 | Prometheus | `http://<host>:9090/alerts` | not exposed; `oc -n aigw-observability port-forward svc/aigw-prometheus 9090` | Optional for beat 5: watch the alert go pending, then firing |
 | Evidence | `http://<host>:8099` | not yet on OpenShift ([future roadmap](OPENSHIFT_MIGRATION.md#future-roadmap)) | Reports from `make evidence` |
 
