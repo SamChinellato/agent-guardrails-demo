@@ -57,9 +57,9 @@ Three options were considered: (A) COO for metrics with the Helm charts for the 
 | Metrics + alerts | kps Prometheus + Alertmanager | **Cluster Observability Operator** `MonitoringStack` in `observability` | Own operator and own API group `monitoring.rhobs`, so it never touches the platform's `monitoring.coreos.com` CRDs or needs UWM. Our `ServiceMonitor`s and `PrometheusRule` move to `monitoring.rhobs/v1`. The APISIX and collector charts' own ServiceMonitors (`monitoring.coreos.com`) are switched off and replaced by ours. |
 | Alert routing (F6) | kps `alertmanager.config` | `MonitoringStack` with its Alertmanager configured from our own `alertmanager-<stack>` Secret (route + killswitch webhook with bearer token file), or an `AlertmanagerConfig` (`monitoring.rhobs/v1alpha1`) | Spike: confirm COO lets us supply the full config and mount the token Secret. |
 | Traces | Tempo Helm chart | **Tempo Operator** `TempoMonolithic`, multitenancy off, OTLP gRPC/HTTP receivers, PVC storage on RBD | Query API on :3200 as today, so the Grafana datasource and the console's trace reader (D-046) only change host name. |
-| Logs | Loki single binary on RBD | **Loki Operator** `LokiStack` size `1x.demo`, object storage on a NooBaa `ObjectBucketClaim` | Spike: tenancy. Red Hat's documented path is `openshift-logging` tenancy with the collector writing OTLP to the `application` tenant through the LokiStack gateway with a service-account bearer token, and Grafana reading with a token that has `cluster-logging-application-view`. Structured metadata (`trace_id`) and retention 24 h must still work. |
+| Logs | Loki single binary on RBD | **Loki Operator** `LokiStack` size `1x.demo`, `openshift-logging` tenancy, object storage on a NooBaa `ObjectBucketClaim` | **Verified (trial 1).** The Red Hat build always deploys the token-checking gateway. The collector (SA `otel-collector`) writes OTLP to the `application` tenant. Grafana and the evidence CLI read as SA `loki-reader`: a cluster-scope `get` on the tenant plus `get` on only the demo namespaces, so queries are limited to them (another namespace is refused). `service_name` stays a stream label and record attributes are structured metadata, so today's queries work unchanged. Every record must also carry `kubernetes.namespace_name`, which the gateway filters on; the collector adds it. Retention 1 d. |
 | Collector | OTel Collector Helm chart | **Red Hat build of OpenTelemetry** `OpenTelemetryCollector` (deployment mode) | Same pipelines; Loki exporter gains `bearertokenauth`. Prometheus exporter on :8889 scraped by our `monitoring.rhobs` ServiceMonitor. |
-| APISIX access logs | `loki-logger` plugin → Loki :3100 push API | `loki-logger` → LokiStack gateway, or switch APISIX to send logs to the collector | Spike: `loki-logger` can't present a rotating SA token easily; sending through the collector is likely simpler. |
+| APISIX access logs | `loki-logger` plugin → Loki :3100 push API | `loki-logger` → the collector (Loki-compatible receiver), which forwards with its token | Only the collector holds a Loki write token. Confirm the Red Hat collector ships the Loki receiver (trial 3). |
 | Dashboards | Grafana in kps, sidecar ConfigMaps | **Grafana Operator** `Grafana` + `GrafanaDatasource` + `GrafanaDashboard` (from the same JSON in ConfigMaps) | Datasource UIDs stay fixed (`prometheus`, `loki`, `tempo`, `alertmanager`) so dashboards are unchanged. Anonymous viewer behind OAuth proxy (OS-04). |
 
 Content is unchanged: dashboards, datasource UIDs, alert expressions, the 5 s scrape and evaluation intervals, and the 24 h retention.
@@ -172,12 +172,12 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 
 Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted afterwards:
 
-1. **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
+1. **Done.** **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
 2. **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
 3. **APISIX logs:** `loki-logger` against the LokiStack gateway, or `http-logger` to the collector.
 4. **vLLM CPU:** dtype on AVX-512 without BF16, tokens per second, Granite tool calling through the gateway's `ai-proxy`.
-5. **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.
-6. **openshift-gitops permissions:** what the default instance can create cluster-wide, and the smallest grant for the rest.
+5. **Done.** **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.
+6. **Settled.** **openshift-gitops permissions:** operators and namespaces are installed by `make` as cluster-admin (`scripts/openshift/install-operators.sh`); Argo CD only manages namespaced objects in the `aigw-` namespaces.
 
 ## Open questions
 

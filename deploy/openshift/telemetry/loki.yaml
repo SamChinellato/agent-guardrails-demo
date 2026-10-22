@@ -1,0 +1,42 @@
+# Logs (OS-01): Loki Operator LokiStack on a NooBaa bucket, openshift-logging tenancy.
+# The Red Hat build always deploys the lokistack-gateway (a stack without spec.tenants is
+# rejected), so clients authenticate with service-account tokens:
+#   write  the OTel collector only (SA otel-collector), OTLP to /api/logs/v1/application
+#   read   Grafana and the evidence CLI (SA loki-reader), limited to the demo namespaces
+# RBAC is in loki-rbac.yaml. service.name stays a stream label (service_name), and record
+# attributes (event, decision_id, trace_id, ...) are structured metadata, so the k3d
+# queries work unchanged. Records must carry kubernetes.namespace_name as well as
+# k8s.namespace.name: the gateway filters reads on it (the collector sets both).
+# The storage Secret loki-s3 is assembled from the bucket claim by
+# scripts/openshift/loki-storage.sh (it holds generated credentials, OS-09).
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: loki
+  namespace: aigw-observability
+spec:
+  generateBucketName: aigw-loki
+  storageClassName: openshift-storage.noobaa.io
+---
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: loki
+  namespace: aigw-observability
+spec:
+  size: 1x.demo
+  managementState: Managed
+  tenants: {mode: openshift-logging}
+  storageClassName: ocs-storagecluster-ceph-rbd
+  storage:
+    schemas:
+      - {version: v13, effectiveDate: "2024-01-01"}
+    secret: {name: loki-s3, type: s3}
+    tls: {caName: openshift-service-ca.crt}
+  limits:
+    global:
+      retention: {days: 1}                 # OBS-07: 24 h
+      otlp:
+        streamLabels:
+          resourceAttributes:
+            - {name: service.name}         # -> service_name, as on k3d
