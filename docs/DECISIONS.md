@@ -659,3 +659,14 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 - **APISIX's data plane** admits named sources only (the router, `aigw-ai`, the console's OAuth proxy, the kill switch's probe), where k3d admits anything that reaches the NodePort.
 - **The OAuth proxies' egress** is 443 and 6443 to any address: they log users in against the cluster's OAuth server, whose address is the public `oauth-openshift` Route.
 - **Verified** by `scripts/openshift/verify-netpol.sh` (16 flows, from inside the pods) and from outside: on the gateway host, no key 401, `demo-user` on the LLM 403, the probe 200 through the guard; HTTP redirects to HTTPS; the OAuth hosts serve the OpenShift login.
+
+## D-057: On OpenShift, the APISIX Admin UI is on a Route behind OAuth (deviation from GW-07 rule 6)
+
+**Change.** At the operator's request, APISIX's built-in Admin UI (`/ui/` on the Admin API, 9180) is reachable at `aigw-apisix.<ingress domain>/ui/` on OpenShift, through a third OpenShift OAuth proxy (`apisix-oauth`) like the console's and the kill-switch panel's (D-056). On k3d it stays `make admin-ui` through a port-forward.
+
+**Why it's a deviation.** GW-07 rule 6 keeps the Admin API reachable only through a deliberate port-forward. Here it sits behind a Route, with three layers:
+1. OpenShift OAuth, admitting only users who may `get` Services in `aigw-gateway`
+2. the admin or viewer key, which the UI asks for as with `make admin-ui`
+3. the NetworkPolicy, which admits only this proxy, the kill switch and the bootstrap Job to 9180
+
+The Admin API itself is the same one the proxy forwards to, so anyone through OAuth with the admin key can change the gateway; the bootstrap's drift check (D-055) reports such changes on the next sync.

@@ -44,9 +44,11 @@ spec:
     # Prometheus scrape
     - from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: aigw-observability}}}]
       ports: [{port: 9091, protocol: TCP}]
-    # Admin API: the kill switch at runtime and the bootstrap Job (GW-07, OS-10). A
+    # Admin API: the kill switch at runtime, the bootstrap Job (GW-07, OS-10) and the Admin
+    # UI's OAuth proxy (D-057). A
     # deliberate port-forward arrives on the pod's loopback and is not subject to policy.
-    - from: [{podSelector: {matchLabels: {app: killswitch}}}, {podSelector: {matchLabels: {app: gateway-bootstrap}}}]
+    - from: [{podSelector: {matchLabels: {app: killswitch}}}, {podSelector: {matchLabels: {app: gateway-bootstrap}}},
+             {podSelector: {matchLabels: {app: apisix-oauth}}}]   # the Admin UI behind OAuth (D-057)
       ports: [{port: 9180, protocol: TCP}]
   egress:
     - to: [{podSelector: {matchLabels: {app: etcd}}}]
@@ -110,11 +112,12 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: oauth-proxies, namespace: aigw-gateway}
 spec:
-  # The OAuth proxies in front of the console and the kill-switch panel (OS-04): reached
+  # The OAuth proxies in front of the console, the kill-switch panel and the APISIX Admin UI
+  # (OS-04, D-057): reached
   # from the router; they log users in against the cluster's OAuth server, whose address
   # is the public oauth-openshift Route (443), and call the API server (6443).
   podSelector:
-    matchExpressions: [{key: app, operator: In, values: [console-oauth, killswitch-oauth]}]
+    matchExpressions: [{key: app, operator: In, values: [console-oauth, killswitch-oauth, apisix-oauth]}]
   policyTypes: [Ingress, Egress]
   ingress:
     - from: [{namespaceSelector: {matchLabels: {policy-group.network.openshift.io/ingress: ""}}}]
@@ -123,7 +126,7 @@ spec:
     - to: [{ipBlock: {cidr: 0.0.0.0/0}}]
       ports: [{port: 443, protocol: TCP}, {port: 6443, protocol: TCP}]
     - to: [{podSelector: {matchLabels: {app.kubernetes.io/name: apisix}}}]
-      ports: [{port: 9080, protocol: TCP}]
+      ports: [{port: 9080, protocol: TCP}, {port: 9180, protocol: TCP}]
     - to: [{podSelector: {matchLabels: {app: killswitch}}}]
       ports: [{port: 8000, protocol: TCP}]
 # --------------------------------------------------------------------------- aigw-ai

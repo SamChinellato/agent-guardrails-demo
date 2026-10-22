@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Allow the pods that call the Kubernetes API to reach it (workstream 2): the console
-# (guard-policy ConfigMap, D-043) and the OAuth proxies (OS-04). On OVN-Kubernetes that is
+# (guard-policy ConfigMap, D-043) and the OAuth proxies (OS-04, D-057). On OVN-Kubernetes that is
 # an ipBlock per control-plane address on 6443, and the addresses differ per cluster, so
 # this policy is applied here from the live `kubernetes` endpoints rather than kept in git
 # (Argo CD leaves it alone: it carries no Argo tracking label). Idempotent.
@@ -23,6 +23,6 @@ policy() { # policy NAMESPACE POD_SELECTOR_JSON
 EOF
 }
 policy aigw-ai '{"matchLabels":{"app":"console"}}' | oc apply -f - >/dev/null
-policy aigw-gateway '{"matchExpressions":[{"key":"app","operator":"In","values":["console-oauth","killswitch-oauth"]}]}' \
+policy aigw-gateway '{"matchExpressions":[{"key":"app","operator":"In","values":["console-oauth","killswitch-oauth","apisix-oauth"]}]}' \
   | oc apply -f - >/dev/null
 log "API server egress allowed to $ips:$port"
