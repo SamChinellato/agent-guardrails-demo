@@ -61,6 +61,8 @@ spec:
             - {name: OLLAMA_MODEL, value: granite-4.0-micro}
             - {name: OLLAMA_SEED, value: "42"}
             - {name: OLLAMA_URL, value: "http://llamacpp.aigw-ai.svc.cluster.local:8000"}
+            - {name: NS_AI, value: aigw-ai}
+            - {name: NS_OBS, value: aigw-observability}
           resources:
             requests: {cpu: 50m, memory: 64Mi}
             limits: {cpu: 500m, memory: 256Mi}

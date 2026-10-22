@@ -9,7 +9,7 @@
     "model": "mock-llm"
   },
   "override": {
-    "endpoint": "http://mock-llm.ai.svc.cluster.local:8000/v1/chat/completions"
+    "endpoint": "http://mock-llm.${NS_AI}.svc.cluster.local:8000/v1/chat/completions"
   },
   "timeout": 120000
 }

@@ -10,9 +10,11 @@
 #   LLM_MODE                      mock | live (selects gateway/upstreams/llm.<mode>.json)
 #   CONSUMER_KEY_DEMO_USER, CONSUMER_KEY_RESEARCHER, CONSUMER_KEY_EXECUTOR, CONSUMER_KEY_PROBE
 #   OLLAMA_MODEL, OLLAMA_SEED, OLLAMA_URL   the live LLM (template variables)
+#   NS_AI, NS_OBS                 the ai and observability namespaces (service addresses)
 #
 # Templates: a string that is exactly "${VAR}" becomes VAR's typed value (string, number
-# or object); "${VAR}" inside a longer string is interpolated. Unknown variables fail.
+# or object); "${VAR}" inside a longer string, or in an object key, is interpolated.
+# Unknown variables fail.
 #
 # Idempotent (REP-07): an object whose live value already matches is not written.
 # Kill-switch state is preserved: an active fault-injection in a plugin config or on a
@@ -21,7 +23,7 @@ set -euo pipefail
 declare -F log >/dev/null || log() { printf '==> %s\n' "$*"; }
 declare -F die >/dev/null || die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 for v in ADMIN_URL ADMIN_KEY GW LLM_MODE CONSUMER_KEY_DEMO_USER CONSUMER_KEY_RESEARCHER \
-         CONSUMER_KEY_EXECUTOR CONSUMER_KEY_PROBE OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL; do
+         CONSUMER_KEY_EXECUTOR CONSUMER_KEY_PROBE OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL NS_AI NS_OBS; do
   [[ -n "${!v:-}" ]] || die "gateway-apply: $v is not set"
 done
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -37,14 +39,17 @@ vars="$(jq -n \
   --arg dk "$CONSUMER_KEY_DEMO_USER" --arg rk "$CONSUMER_KEY_RESEARCHER" \
   --arg ek "$CONSUMER_KEY_EXECUTOR" --arg pk "$CONSUMER_KEY_PROBE" \
   --arg model "$OLLAMA_MODEL" --argjson seed "$OLLAMA_SEED" --arg url "$OLLAMA_URL" \
+  --arg nsai "$NS_AI" --arg nsobs "$NS_OBS" \
   '{CONSUMER_KEY_DEMO_USER: $dk, CONSUMER_KEY_RESEARCHER: $rk, CONSUMER_KEY_EXECUTOR: $ek,
-    CONSUMER_KEY_PROBE: $pk, OLLAMA_MODEL: $model, OLLAMA_SEED: $seed, OLLAMA_URL: $url}')"
+    CONSUMER_KEY_PROBE: $pk, OLLAMA_MODEL: $model, OLLAMA_SEED: $seed, OLLAMA_URL: $url,
+    NS_AI: $nsai, NS_OBS: $nsobs}')"
 
 RENDER='
   def var($n): if $vars | has($n) then $vars[$n] else error("template variable \($n) is not set") end;
+  def interp: gsub("\\$\\{(?<n>[A-Z0-9_]+)\\}"; var(.n) | tostring);
   walk(if type == "string" then
-         if test("^\\$\\{[A-Z0-9_]+\\}$") then var(.[2:-1])
-         else gsub("\\$\\{(?<n>[A-Z0-9_]+)\\}"; var(.n) | tostring) end
+         if test("^\\$\\{[A-Z0-9_]+\\}$") then var(.[2:-1]) else interp end
+       elif type == "object" then with_entries(.key |= interp)   # upstream nodes are keyed by host:port
        else . end)'
 render() { jq --argjson vars "$vars" "$RENDER" "$1"; }
 

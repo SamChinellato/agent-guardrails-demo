@@ -15,7 +15,7 @@
   "upstream": {
     "type": "roundrobin",
     "nodes": {
-      "executor.ai.svc.cluster.local:8000": 1
+      "executor.${NS_AI}.svc.cluster.local:8000": 1
     },
     "timeout": {
       "connect": 5,

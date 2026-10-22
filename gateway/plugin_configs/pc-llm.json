@@ -28,7 +28,7 @@
     },
     "loki-logger": {
       "endpoint_addrs": [
-        "http://loki.observability.svc.cluster.local:3100"
+        "http://loki.${NS_OBS}.svc.cluster.local:3100"
       ],
       "log_labels": {
         "service_name": "apisix",

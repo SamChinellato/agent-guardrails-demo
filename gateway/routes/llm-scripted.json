@@ -72,6 +72,7 @@
       "match_all_conversation_history": true
     },
     "ai-injection-guard": {
+      "endpoint": "http://guard.${NS_AI}.svc.cluster.local:8000/v1/inspect/llm",
       "stage": "llm",
       "timeout_ms": 3000,
       "fail_open": false

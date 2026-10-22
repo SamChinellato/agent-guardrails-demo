@@ -15,7 +15,7 @@
   "upstream": {
     "type": "roundrobin",
     "nodes": {
-      "researcher.ai.svc.cluster.local:8000": 1
+      "researcher.${NS_AI}.svc.cluster.local:8000": 1
     },
     "timeout": {
       "connect": 5,
@@ -60,6 +60,7 @@
       "match_all_conversation_history": true
     },
     "ai-injection-guard": {
+      "endpoint": "http://guard.${NS_AI}.svc.cluster.local:8000/v1/inspect/llm",
       "stage": "agent_ingress",
       "timeout_ms": 3000,
       "fail_open": false

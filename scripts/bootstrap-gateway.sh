@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 detect_runtime || die "no container runtime"
 llm_host_settings
 
-export ADMIN_KEY GW="$ROOT/gateway" LLM_MODE="${LLM_MODE:-mock}" OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL
+export ADMIN_KEY GW="$ROOT/gateway" LLM_MODE="${LLM_MODE:-mock}" OLLAMA_MODEL OLLAMA_SEED OLLAMA_URL NS_AI NS_OBS
 ADMIN_KEY="$(cat "$ROOT/.secrets/apisix-admin-key")"
 export CONSUMER_KEY_DEMO_USER CONSUMER_KEY_RESEARCHER CONSUMER_KEY_EXECUTOR CONSUMER_KEY_PROBE
 CONSUMER_KEY_DEMO_USER="$(cat "$ROOT/.secrets/consumer-demo-user")"

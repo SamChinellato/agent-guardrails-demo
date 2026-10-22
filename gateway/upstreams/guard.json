@@ -4,7 +4,7 @@
   "desc": "Guard service: MCP inspecting proxy (F3)",
   "type": "roundrobin",
   "nodes": {
-    "guard.ai.svc.cluster.local:8000": 1
+    "guard.${NS_AI}.svc.cluster.local:8000": 1
   },
   "scheme": "http",
   "timeout": {
