@@ -142,7 +142,7 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 |---|---|---|
 | Console (`/console` on APISIX) | `console-…` edge TLS → oauth-proxy → APISIX | OpenShift OAuth; plus the console's own controls as today |
 | Gateway API (CLI, tests) | `gateway-…` edge TLS → APISIX directly | Consumer keys (key-auth) as today. Not behind OAuth, so the CLI and tests keep working. |
-| Grafana | `grafana-…` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer |
+| Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
 | Prometheus, Alertmanager, evidence, APISIX Admin | none | `make ui UI=…` / `make admin-ui` port-forward |
 
@@ -232,7 +232,7 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 
 1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the Application (**done**: `aigw-workloads`, first sync verified 2026-10-22); BuildConfigs and ImageStreams (**done**). An app-of-apps root comes when there is more than one Application.
 2. **Platform fit.** `restricted-v2` (**done**: every workload runs with an assigned UID, no exceptions so far), NetworkPolicies for OVN-K (**done**, verified by `scripts/openshift/verify-netpol.sh`), Admin allow-list (**done**), Routes with oauth-proxy (**done** for the gateway API, console and kill-switch panel; Grafana with workstream 3), evidence viewer replacement (OS-13: `make ui UI=evidence`, workstream 6). See D-056.
-3. **Telemetry.** Operator subscriptions, then the CRs in [Telemetry](#telemetry), with dashboards, datasources and alert rules unchanged in content. Spikes first: LokiStack tenancy and OTLP ingest, COO Alertmanager config, APISIX logs.
+3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the console's trace reader and Grafana link, the evidence CLI's readers.
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
 5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
 6. **Operator tooling.** CLI and tests read Route URLs; console Grafana link; `make status` / `logs` / `ui` on OpenShift.
@@ -253,6 +253,9 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 - **`wait_for` hides its command's output** (`scripts/lib.sh`), so log after it, not inside it.
 - **An Argo PostSync hook waits for every resource to be healthy.** The kill switch is only ready once the bootstrap has written the gateway config, so a PostSync bootstrap deadlocked the first sync. It is a Sync hook in wave 1 with the kill switch in wave 2.
 - **APISIX upstream nodes are keyed by `host:port`.** Template variables must be interpolated in object keys too, or a node key keeps a literal `${NS_AI}` and the drift check still passes (desired and live agree).
+- **Tempo's webhook checks the requester's own rights.** Enabling `openshift` tenancy needs the applier (Argo CD's controller) to be able to create TokenReviews (D-058).
+- **Grafana 13 under the operator: disable plugin preinstall.** Otherwise the bundled Prometheus, Loki and Tempo plugins end up unregistered ("Plugin not registered") after a failed background update on the read-only plugin directory.
+- **The operator's Grafana forgets its datasources on restart** (emptyDir) until the next resync; the CRs set `resyncPeriod: 1m`.
 - **Set `TARGET` before sourcing `lib.sh`.** It picks the kubeconfig when sourced; setting it afterwards still targets k3d.
 
 ## Spikes before implementation
