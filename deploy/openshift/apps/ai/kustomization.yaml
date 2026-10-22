@@ -1,0 +1,9 @@
+# The ai workloads on OpenShift: the shared base in aigw-ai (OS-12), with every ${VAR}
+# placeholder that k3d fills in with sed set here instead, so Argo CD can render it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aigw-ai
+resources:
+  - ../../../base/ai
+patches:
+  - path: workloads.yaml

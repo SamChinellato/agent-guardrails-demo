@@ -54,11 +54,11 @@ mkdir -p "$(dirname "$KUBECONFIG")"
 wait_for "API server" 120 kubectl get --raw /readyz
 
 # ---------------------------------------------------------------- base objects
-kubectl apply -f "$ROOT/deploy/manifests/00-namespaces.yaml" >/dev/null
+kubectl apply -f "$ROOT/deploy/k3d/00-namespaces.yaml" >/dev/null
 "$ROOT/scripts/gen-secrets.sh"
 
 log "etcd"
-sed "s|\${ETCD_REF}|$(pinned_ref ETCD)|" "$ROOT/deploy/manifests/10-etcd.yaml" | kubectl apply -f - >/dev/null
+sed "s|\${ETCD_REF}|$(pinned_ref ETCD)|" "$ROOT/deploy/base/gateway/10-etcd.yaml" | kubectl apply -f - >/dev/null
 kubectl -n gateway rollout status statefulset/etcd --timeout=180s >/dev/null
 
 # ---------------------------------------------------------------- observability (P2)
@@ -78,7 +78,7 @@ helm_install tempo observability tempo TEMPO "$ROOT/deploy/helm-values/tempo.yam
 helm_install loki observability loki LOKI "$ROOT/deploy/helm-values/loki.yaml" \
   --set "loki.image.tag=${LOKI_IMAGE##*:}" --set "loki.image.digest=$LOKI_DIGEST"
 "$ROOT/scripts/apply-observability.sh"
-sed "s|\${PYTHON_BASE_REF}|$(pinned_ref PYTHON_BASE)|" "$ROOT/deploy/manifests/60-evidence-viewer.yaml" | kubectl apply -f - >/dev/null
+sed "s|\${PYTHON_BASE_REF}|$(pinned_ref PYTHON_BASE)|" "$ROOT/deploy/k3d/60-evidence-viewer.yaml" | kubectl apply -f - >/dev/null
 
 # ---------------------------------------------------------------- built images
 "$ROOT/scripts/build-images.sh"
@@ -111,7 +111,7 @@ apply_cm ai fixtures-records "$ROOT/scenarios/fixtures/records.json"
 # (`make reset` restores it from policy/policy.yaml).
 kubectl -n ai get configmap guard-policy >/dev/null 2>&1 || apply_cm ai guard-policy "$ROOT/policy/policy.yaml"
 apply_cm ai guard-policy-baseline "$ROOT/policy/policy.yaml"   # what the console restores (D-043)
-for m in 30-mock-llm 20-guard 21-mcp-servers 22-agents; do render_manifest "$ROOT/deploy/manifests/$m.yaml" | kubectl apply -f - >/dev/null; done
+for m in 30-mock-llm 20-guard 21-mcp-servers 22-agents; do render_manifest "$ROOT/deploy/base/ai/$m.yaml" | kubectl apply -f - >/dev/null; done
 for d in mock-llm mcp-docs mcp-actions guard researcher executor console; do kubectl -n ai rollout status "deployment/$d" --timeout=300s >/dev/null; done
 
 log "network policies"
@@ -122,7 +122,7 @@ case "$CONTAINER_RUNTIME" in
 esac
 apiserver="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')/32"
 sed -e "s|\${OLLAMA_EGRESS}|$ollama_egress|" -e "s|\${APISERVER_EGRESS}|$apiserver|" \
-  "$ROOT/deploy/manifests/50-networkpolicies.yaml" | kubectl apply -f - >/dev/null
+  "$ROOT/deploy/k3d/50-networkpolicies.yaml" | kubectl apply -f - >/dev/null
 "$ROOT/scripts/verify-netpol.sh"
 
 log "apisix"
@@ -151,7 +151,7 @@ kubectl -n gateway rollout status deployment/apisix --timeout=300s >/dev/null
 "$ROOT/scripts/bootstrap-gateway.sh"
 
 log "killswitch"
-render_manifest "$ROOT/deploy/manifests/40-killswitch.yaml" | kubectl apply -f - >/dev/null
+render_manifest "$ROOT/deploy/base/gateway/40-killswitch.yaml" | kubectl apply -f - >/dev/null
 kubectl -n gateway rollout status deployment/killswitch --timeout=180s >/dev/null
 
 "$ROOT/scripts/smoke.sh"

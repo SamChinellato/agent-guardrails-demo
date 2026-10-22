@@ -173,7 +173,7 @@ OpenShift GitOps (Argo CD) syncs the OpenShift overlay from this repository; `ma
 
 | Today (`up.sh`) | Under Argo CD |
 |---|---|
-| `sed` substitution into manifests (`${GUARD_IMAGE}`, `${LLM_MODEL}`, ...) | Kustomize overlays (`deploy/overlays/k3d`, `deploy/overlays/openshift`) with the values in git; k3d keeps rendering the same base through `up.sh` |
+| `sed` substitution into manifests (`${GUARD_IMAGE}`, `${LLM_MODEL}`, ...) | Kustomize: the shared base in `deploy/base/{ai,gateway}`, and the OpenShift overlay in `deploy/openshift/apps/{ai,gateway}` with every value in git. k3d keeps applying the base files through `up.sh` and `sed` (no k3d overlay); its own files are in `deploy/k3d/`. See [Repository layout](#repository-layout) |
 | Helm charts with `--set` digests | Replaced by operator CRs on OpenShift (OS-01); APISIX chart rendered by Argo's Helm support with values in git |
 | Image digests from `build-images.sh` | ImageStreams with `lookupPolicy: local` in each consuming namespace and an `image.openshift.io/triggers` annotation, so a new build rolls the Deployment and the pod spec carries the digest. Argo ignores the trigger-managed `image` field |
 | `gen-secrets.sh` → Secrets | Unchanged: `make up` runs `gen-secrets.sh` against the cluster before the first sync. Argo never manages Secrets, and they never reach git (**OS-09**) |
@@ -200,11 +200,27 @@ The cluster-wide `openshift-gitops` instance, installed by the OpenShift GitOps 
 
 Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gateway JSON, the OTel and Grafana config, the CLI and the tests. They become variables: Kustomize replacements in manifests, template variables in `gateway/` (`bootstrap-gateway.sh` already supports `${VAR}`), and a namespace setting in the CLI and tests. NetworkPolicy `namespaceSelector`s already match `kubernetes.io/metadata.name`, so only their values change.
 
+## Repository layout
+
+| Path | What | Used by |
+|---|---|---|
+| `deploy/base/ai`, `deploy/base/gateway` | Workloads shared by both targets, with `${VAR}` placeholders, and a `kustomization.yaml` each | k3d (`up.sh` applies the files with `sed`), OpenShift (as the base of the overlay) |
+| `deploy/k3d/` | Namespaces, ServiceMonitors (`monitoring.coreos.com`), NetworkPolicies (kube-router) and the evidence viewer | k3d only; OpenShift replaces each (`namespaces.yaml`, `monitoring.rhobs`, OVN-K policies, OS-13) |
+| `deploy/openshift/apps/{ai,gateway}` | Overlay: `aigw-` namespaces, endpoints, images from `aigw-build` with image triggers, fixed UIDs removed (`restricted-v2`), pinned refs written out | OpenShift (Argo CD) |
+| `deploy/openshift/{operators,telemetry,build,llm}` | OpenShift-only platform pieces | OpenShift |
+| `deploy/helm-values/` | Chart values (APISIX on both; kps, Loki, Tempo, collector on k3d only) | both |
+
+- **No k3d overlay.** k3d isn't deployed through Argo CD, and its values (registry tags, the host Ollama IP, the API server address) are only known when `up.sh` runs, so it keeps substituting them. Behaviour is unchanged: the files moved without edits.
+- **Patches name the base namespace** (`ai`, `gateway`): Kustomize matches them before it renames the namespace.
+- **Images are set in the patches**, not with Kustomize's `images:`, which doesn't match `${...}` names. Each workload also carries an `image.openshift.io/triggers` annotation on `aigw-build/<svc>:latest`, so the running pod spec carries the digest; the Argo Application ignores that field.
+- **Pinned refs are written out in git** (etcd's `image@digest`). `scripts/openshift/check-overlay-pins.sh`, run by `make pin-check`, fails if any of them isn't the `versions.env` pair (REP-02).
+- **Not yet in the overlay:** NetworkPolicies (workstream 2), the gateway bootstrap Job (OS-10), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`), the Grafana URL and the console's Tempo token (workstream 6).
+
 ## Workstreams
 
 Phased so the demo keeps working on k3d throughout: OpenShift is a second **target**, chosen with `TARGET=openshift` (default `k3d`).
 
-1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus `k3d` and `openshift` overlays, with k3d behaviour unchanged; OpenShift GitOps install and the root Application; BuildConfigs and ImageStreams.
+1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the root Application (next); BuildConfigs and ImageStreams (**done**).
 2. **Platform fit.** `restricted-v2` (image runs as any UID in group 0), NetworkPolicies for OVN-K, Admin allow-list, Routes with oauth-proxy, evidence viewer replacement.
 3. **Telemetry.** Operator subscriptions, then the CRs in [Telemetry](#telemetry), with dashboards, datasources and alert rules unchanged in content. Spikes first: LokiStack tenancy and OTLP ingest, COO Alertmanager config, APISIX logs.
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.

@@ -1,0 +1,10 @@
+# Workloads in the ai namespace, shared by both targets. k3d applies these files directly
+# through scripts/up.sh (its ${VAR} placeholders are filled in by sed); OpenShift renders
+# them through deploy/openshift/apps/ai, which sets every placeholder.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 20-guard.yaml
+  - 21-mcp-servers.yaml
+  - 22-agents.yaml
+  - 30-mock-llm.yaml

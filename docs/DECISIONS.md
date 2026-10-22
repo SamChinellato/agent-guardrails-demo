@@ -619,3 +619,11 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 - Live answers differ from the k3d runs: llama.cpp applies the GGUF's chat template and Ollama its own (501 vs 452 prompt tokens for the same messages).
 - The prompt cache stays on, as with Ollama, so a cached step can differ slightly from a fresh one. Tests and evidence (EVD-05) use the mock LLM, so no requirement depends on live output.
 - The model's own limits are the same on both targets: it can ignore the "three plain sentences" instruction and get simple arithmetic wrong.
+
+## D-053: Manifests split into a shared base, k3d-only files and the OpenShift overlay
+
+**Change.** `SPEC.md`'s layout puts every manifest in `deploy/manifests/`. For the OpenShift target (OS-07, OS-08) they moved, unedited:
+- `deploy/base/ai` (guard, MCP servers, agents and console, mock LLM) and `deploy/base/gateway` (etcd, kill switch), each with a `kustomization.yaml`: shared by both targets
+- `deploy/k3d/` (namespaces, ServiceMonitors, NetworkPolicies, evidence viewer): k3d only, because OpenShift replaces each of them
+
+`scripts/up.sh` applies the same files with the same `sed` substitution as before, so k3d behaviour is unchanged. The OpenShift overlay is `deploy/openshift/apps/{ai,gateway}` (`docs/OPENSHIFT_MIGRATION.md`, Repository layout).

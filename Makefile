@@ -39,7 +39,8 @@ tools: ## Install pinned k3d, kubectl and helm into .tools/bin (checksum-verifie
 prereqs: ## Check runtime (Docker/Podman), tools, memory, disk, ports, (live) host Ollama
 	@scripts/prereqs.sh $(LLM_MODE)
 
-pin-check: ## Fail if upstream image digests drifted from versions.env
+pin-check: ## Fail if upstream image digests drifted from versions.env, or the OpenShift overlays from it
+	@scripts/openshift/check-overlay-pins.sh
 	@scripts/pin-digests.sh --check
 
 prefetch: ## Pull every pinned chart, image and (LLM_MODE=live) the host Ollama model

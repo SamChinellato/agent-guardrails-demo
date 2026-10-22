@@ -1,0 +1,139 @@
+# Per-workload changes for OpenShift:
+# - endpoints in the aigw- namespaces (OS-12); the collector and Prometheus are the
+#   Red Hat operator instances (OS-01)
+# - runAsUser: null drops the fixed UID, so restricted-v2 assigns one (OS-06)
+# - the image from aigw-build, with a trigger on its ImageStreamTag <svc>:latest that
+#   swaps in the current digest, so the pod spec carries it (OS-02, OS-08)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guard
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"guard:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"guard\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: guard
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/guard:latest
+          env:
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+            - {name: KILLSWITCH_URL, value: "http://killswitch.aigw-gateway.svc.cluster.local:8000"}
+            - {name: MCP_DOCS_URL, value: "http://mcp-docs.aigw-ai.svc.cluster.local:8000/mcp"}
+            - {name: MCP_ACTIONS_URL, value: "http://mcp-actions.aigw-ai.svc.cluster.local:8000/mcp"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-docs
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"mcp-docs:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mcp-docs\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: mcp-docs
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/mcp-docs:latest
+          env:
+            - {name: MCP_ALLOWED_HOSTS, value: "mcp-docs.aigw-ai.svc.cluster.local:8000,mcp-docs.aigw-ai.svc:8000,mcp-docs:8000"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-actions
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"mcp-actions:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mcp-actions\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: mcp-actions
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/mcp-actions:latest
+          env:
+            - {name: MCP_ALLOWED_HOSTS, value: "mcp-actions.aigw-ai.svc.cluster.local:8000,mcp-actions.aigw-ai.svc:8000,mcp-actions:8000"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-llm
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"mock-llm:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"mock-llm\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: mock-llm
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/mock-llm:latest
+          env:
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: researcher
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"agents:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"researcher\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: researcher
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/agents:latest
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
+            - {name: LLM_MODEL, value: "demo"}     # mock LLM; live mode is workstream 5
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: executor
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"agents:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"executor\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: executor
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/agents:latest
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
+            - {name: LLM_MODEL, value: "demo"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console
+  namespace: ai          # the base namespace; kustomize renames it to aigw-ai
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"console:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"console\")].image"}]'
+spec:
+  template:
+    spec:
+      securityContext: {runAsUser: null}
+      containers:
+        - name: console
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/console:latest
+          env:
+            - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
+            - {name: KILLSWITCH_URL, value: "http://killswitch.aigw-gateway.svc.cluster.local:8000"}
+            - {name: PROMETHEUS_URL, value: "http://aigw-prometheus.aigw-observability.svc.cluster.local:9090"}
+            # The Grafana link and the trace reader (TEMPO_URL, bearer token) need code
+            # changes (workstream 6); until then the link is wrong and the trace view empty
+            - {name: GRAFANA_PORT, value: "443"}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}

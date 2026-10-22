@@ -1,0 +1,9 @@
+# The gateway workloads on OpenShift (etcd and the kill switch; APISIX is its Helm chart):
+# the shared base in aigw-gateway (OS-12), placeholders set as in ../ai.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aigw-gateway
+resources:
+  - ../../../base/gateway
+patches:
+  - path: workloads.yaml

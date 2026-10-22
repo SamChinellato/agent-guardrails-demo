@@ -1,0 +1,7 @@
+# Workloads in the gateway namespace (APISIX itself is a Helm chart), shared by both
+# targets; see ../ai/kustomization.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - 10-etcd.yaml
+  - 40-killswitch.yaml

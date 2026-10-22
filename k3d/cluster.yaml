@@ -22,7 +22,7 @@ ports:
   - port: ${HOST_BIND}:${HOST_PORT_EVIDENCE}:30899     # evidence reports (read-only)
     nodeFilters: [loadbalancer]
 volumes:
-  # Evidence bundles, served read-only by the evidence viewer (deploy/manifests/60-evidence-viewer.yaml)
+  # Evidence bundles, served read-only by the evidence viewer (deploy/k3d/60-evidence-viewer.yaml)
   - volume: ${DEMO_ROOT}/evidence:/demo-evidence
     nodeFilters: [server:*]
 registries:

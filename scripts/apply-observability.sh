@@ -18,4 +18,4 @@ for d in "$OBS"/dashboards/*.json; do
   apply_cm "dashboard-$(basename "$d" .json)" grafana_dashboard "$d"
 done
 for r in "$OBS"/alerts/*.yaml; do kubectl apply -f "$r" >/dev/null; done
-kubectl apply -f "$ROOT/deploy/manifests/40-servicemonitors.yaml" >/dev/null
+kubectl apply -f "$ROOT/deploy/k3d/40-servicemonitors.yaml" >/dev/null
