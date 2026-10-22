@@ -1,15 +1,37 @@
-# Live-mode LLM on OpenShift (OS-03, Q-16 trial): llama.cpp's OpenAI-compatible server on
-# CPU with IBM's official Q4_K_M GGUF of Granite 4.0 Micro. gguf-fetch stages the file into
-# the shared models volume, verified against granite-4.0-micro-gguf.sha256; the server pod
-# re-verifies it (no network) before it starts.
+# Live-mode LLM on OpenShift (OS-16, D-052, D-060): llama.cpp's OpenAI-compatible server on
+# CPU with IBM's official Q4_K_M GGUF of Granite 4.0 Micro. Always running, so switching to
+# live mode is instant (make llm-mode). gguf-fetch stages the file into the models volume on
+# every sync, verified against deploy/openshift/llm/granite-4.0-micro-gguf.sha256 (files that
+# already verify are kept, so a re-run only re-hashes); the server pod re-verifies it (no
+# network) before it starts. Images by digest: LLAMACPP_IMAGE and PYTHON_BASE_IMAGE
+# (REP-02, make openshift-check).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: models
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+  annotations:
+    # 2 GB of verified weights: never pruned or deleted with the Application
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  accessModes: [ReadWriteMany]          # the fetch Job and the server mount it at the same time
+  storageClassName: ocs-storagecluster-cephfs
+  resources: {requests: {storage: 20Gi}}
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: gguf-fetch
   namespace: aigw-ai
   labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 3
+  activeDeadlineSeconds: 1800
   template:
     metadata:
       labels: {app: gguf-fetch}
@@ -22,11 +44,11 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: fetch
-          image: ${PYTHON_BASE_REF}
+          image: docker.io/library/python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
           command: ["python", "/fetch/fetch_model.py"]
           env:
-            - {name: MODEL_REPO, value: "${GGUF_MODEL_REPO}"}
-            - {name: MODEL_REVISION, value: "${GGUF_MODEL_REVISION}"}
+            - {name: MODEL_REPO, value: "ibm-granite/granite-4.0-micro-GGUF"}
+            - {name: MODEL_REVISION, value: "ec48475f0c811d812fbfb61975717a9c36eeb652"}
             - {name: MODEL_DIR, value: /models/granite-4.0-micro-gguf}
             - {name: MANIFEST, value: /fetch/granite-4.0-micro-gguf.sha256}
           resources:
@@ -78,7 +100,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       initContainers:
         - name: verify-model
-          image: ${PYTHON_BASE_REF}
+          image: docker.io/library/python:3.12.15-slim-trixie@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
           command: ["python", "/fetch/fetch_model.py", "--verify-only"]
           env:
             - {name: MODEL_DIR, value: /models/granite-4.0-micro-gguf}
@@ -95,7 +117,7 @@ spec:
             - {name: fetch, mountPath: /fetch, readOnly: true}
       containers:
         - name: llamacpp
-          image: ${LLAMACPP_REF}
+          image: ghcr.io/ggml-org/llama.cpp:server-b11312@sha256:23fd59bc5e5b06ca68003a5772d441f0411fb723eeaff850b9111bcd2ac4fd33
           # Flag and value as separate arguments: llama.cpp rewrites "_" to "-" inside a
           # --flag=value token, which mangles the Q4_K_M file name
           args: [--model, /models/granite-4.0-micro-gguf/granite-4.0-micro-Q4_K_M.gguf,

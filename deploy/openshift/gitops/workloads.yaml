@@ -33,18 +33,24 @@ spec:
     automated: {prune: true, selfHeal: true}
     syncOptions: [RespectIgnoreDifferences=true]
   ignoreDifferences:
-    # The image triggers write the current digest into the pod spec (OS-02). Containers
-    # without a trigger (pinned in git: policy-sync) are excluded by name, so their image
-    # stays tracked and a newly added one isn't dropped for want of a live value. The
-    # selector must hold on both the desired and the live object, hence the name, not the
-    # image (a trigger rewrites the image to another registry's digest)
+    # The image triggers write the current digest into the pod spec (OS-02). Only the
+    # containers a Deployment's own image.openshift.io/triggers names: pinned containers
+    # (policy-sync, llamacpp) stay tracked from git, and a newly added one isn't dropped for
+    # want of a live value. The selector must hold on both the desired and the live object,
+    # hence the annotation, not the image (a trigger rewrites it to another registry's digest)
     - group: apps
       kind: Deployment
-      jqPathExpressions: ['.spec.template.spec.containers[] | select(.name != "policy-sync") | .image']
+      jqPathExpressions:
+        - '. as $d | .spec.template.spec.containers[] | select(.name as $n | ($d.metadata.annotations["image.openshift.io/triggers"] // "") | contains("@.name==\\\"" + $n + "\\\"")) | .image'
     # Changed at runtime by the console and make policy-set (D-043)
     - kind: ConfigMap
       name: guard-policy
       namespace: aigw-ai
+      jsonPointers: [/data]
+    # Changed at runtime by make llm-mode (D-060)
+    - kind: ConfigMap
+      name: llm-mode
+      namespace: aigw-gateway
       jsonPointers: [/data]
 ---
 # APISIX: the pinned chart with the k3d values plus the OpenShift ones from this repo

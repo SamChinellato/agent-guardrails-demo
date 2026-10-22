@@ -27,7 +27,7 @@ define not_yet
 	@echo "make $@: not implemented yet (phase $(1)). See docs/REQUIREMENTS_STATUS.md." >&2; exit 2
 endef
 
-.PHONY: help openshift-check tools admin-ui ui diagram prereqs prefetch up down reset status demo demo-all trip kill-reset \
+.PHONY: help llm-mode openshift-check tools admin-ui ui diagram prereqs prefetch up down reset status demo demo-all trip kill-reset \
         policy-set evidence evidence-verify test clean-room logs pin-check
 
 help: ## List targets
@@ -76,6 +76,9 @@ trip: ## Manual kill: make trip SCOPE=global|tools|agent:researcher|agent:execut
 kill-reset: ## Reset a kill: make kill-reset SCOPE=... REASON="..." (global asks for confirmation)
 	@test -n "$(SCOPE)" -a -n "$(REASON)" || { echo 'usage: make kill-reset SCOPE=... REASON="..."' >&2; exit 2; }
 	@cd services && uv run --frozen --package cli demo kill-reset "$(SCOPE)" "$(REASON)"
+
+llm-mode: ## Switch the gateway's LLM without a redeploy: make llm-mode MODE=mock|live [TARGET=openshift]
+	@scripts/llm-mode.sh "$(MODE)"
 
 policy-set: ## Change a guard check mode: make policy-set CHECK=... MODE=enforce|monitor|off
 	@scripts/policy-set.sh "$(CHECK)" "$(MODE)"

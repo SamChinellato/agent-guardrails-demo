@@ -50,7 +50,9 @@ spec:
             - name: ADMIN_KEY
               valueFrom: {secretKeyRef: {name: apisix-admin, key: admin}}
             - {name: GW, value: /gateway}
-            - {name: LLM_MODE, value: mock}          # live mode is workstream 5
+            # mock | live, from the llm-mode ConfigMap that make llm-mode changes (D-060)
+            - name: LLM_MODE
+              valueFrom: {configMapKeyRef: {name: llm-mode, key: mode}}
             - name: CONSUMER_KEY_DEMO_USER
               valueFrom: {secretKeyRef: {name: consumer-keys, key: demo-user}}
             - name: CONSUMER_KEY_RESEARCHER

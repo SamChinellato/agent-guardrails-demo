@@ -62,6 +62,20 @@ $(files scenarios/fixtures/documents)
       annotations: {argocd.argoproj.io/sync-options: Prune=false}
     files:
       - policy/policy.yaml
+  # gguf-fetch and llama.cpp's verify-model step (OS-16): the script and the pinned hashes
+  - name: model-fetch
+    namespace: aigw-ai
+    files:
+      - deploy/openshift/llm/fetch_model.py
+      - deploy/openshift/llm/granite-4.0-micro-gguf.sha256
+  # The LLM mode the gateway-bootstrap Job applies (D-060): live on a fresh install, then
+  # switched by make llm-mode. The Application ignores its data, like guard-policy.
+  - name: llm-mode
+    namespace: aigw-gateway
+    options:
+      annotations: {argocd.argoproj.io/sync-options: Prune=false}
+    literals:
+      - mode=live
   # APISIX's custom Lua plugins, one ConfigMap each (the chart names a volume per ConfigMap)
 $(cd "$ROOT" && for f in $(LC_ALL=C ls gateway/plugins/*.lua); do
     printf '  - name: apisix-plugin-%s\n    namespace: aigw-gateway\n    files:\n      - %s\n' "$(basename "$f" .lua)" "$f"

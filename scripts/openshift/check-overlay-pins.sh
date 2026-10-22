@@ -18,5 +18,11 @@ done < <(grep -rhoE '[a-z0-9./-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}' "$ROOT
 while read -r tagref; do
   grep -qE ":${tagref//./\\.}\$" <<<"$pinned" || { echo "check-overlay-pins: tag $tagref is not pinned in versions.env" >&2; bad=1; }
 done < <(grep -rhoE 'tag: *"?[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}' "$ROOT/deploy/openshift/apps" | sed -E 's/tag: *"?//' | sort -u)
+# The live model (OS-16): gguf-fetch's repository and revision
+llm="$ROOT/deploy/openshift/apps/ai/llamacpp.yaml"
+for pair in "MODEL_REPO:$GGUF_MODEL_REPO" "MODEL_REVISION:$GGUF_MODEL_REVISION"; do
+  grep -qF "{name: ${pair%%:*}, value: \"${pair#*:}\"}" "$llm" \
+    || { echo "check-overlay-pins: ${pair%%:*} in $llm doesn't match versions.env (GGUF_${pair%%:*})" >&2; bad=1; }
+done
 (( bad == 0 )) && echo "OpenShift overlay pins match versions.env"
 exit "$bad"

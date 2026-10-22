@@ -96,7 +96,7 @@ spec:
           image: image-registry.openshift-image-registry.svc:5000/aigw-build/agents:latest
           env:
             - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
-            - {name: LLM_MODEL, value: "demo"}     # mock LLM; live mode is workstream 5
+            - {name: LLM_MODEL, value: "demo"}     # cosmetic: the gateway's llm upstream sets the model (D-060)
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
 ---
 apiVersion: apps/v1
