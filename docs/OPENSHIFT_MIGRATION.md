@@ -32,7 +32,7 @@ Constraint: the telemetry stack (metrics, alerts, traces, logs, dashboards) must
 | Images | Built locally, pushed to the k3d registry | In-cluster binary `BuildConfig`s (Docker strategy) in a build namespace, into ImageStreams; workloads pull by ImageStreamTag digest (**OS-02**) | M |
 | Pod security | Fixed `runAsUser` 1000/10001, `fsGroup` | `restricted-v2` everywhere: fixed UIDs and `fsGroup` removed in the OpenShift overlay, our image made to run as any UID in group 0. Exceptions get `nonroot-v2` on their own service account, recorded (**OS-06**) | M |
 | Exposure | NodePorts mapped to host ports 8080/3000/8090/9090/9093/8099 | Edge-TLS Routes; demo UIs behind OpenShift OAuth proxy, the rest by port-forward (**OS-04**) | M |
-| Console → Grafana link | Built from `GRAFANA_PORT` | Built from a full `GRAFANA_URL` (small code change) | S |
+| Console → Grafana link | Built from `GRAFANA_PORT` | `GRAFANA_SUBDOMAIN=aigw-grafana`: the console's own domain with Grafana's Route subdomain, so no cluster domain in git. **Done** | S |
 | CLI and tests | Reach `127.0.0.1:<port>` | Read base URLs from settings (Route hosts), falling back to localhost so k3d still works | M |
 | Evidence viewer | `hostPath` from the laptop's `evidence/` | No in-cluster viewer. `make ui UI=evidence` serves `evidence/` read-only from the presenter's machine; bundles never leave it (**OS-13**) | S |
 | NetworkPolicies | k3s kube-router; DNS in `kube-system` | OVN-K. DNS selectors move to `openshift-dns` (port **5353**); allow ingress from the router (`policy-group.network.openshift.io/ingress`); API server egress to the control-plane IPs on 6443 | M |
@@ -224,7 +224,7 @@ Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gate
 - **Secrets** come from `gen-secrets.sh`, which now uses `NS_GATEWAY`/`NS_AI`/`NS_OBS` from `lib.sh` (prefixed `aigw-` on OpenShift); both targets share the values in `.secrets/`.
 - **First sync (2026-10-22, `8a6900b`).** Synced from `openshift-migration` with the deploy key. Every `aigw-ai` pod and etcd ready under `restricted-v2` (UIDs assigned by OpenShift); image triggers write the build digest into the pod spec and Argo stays Synced. The kill switch stays unready until APISIX exists (`apisix-admin` doesn't resolve).
 - **APISIX and the bootstrap (2026-10-22).** `aigw-apisix` runs the pinned chart under `restricted-v2` with no exception needed (OS-06). The `gateway-bootstrap` Job (a wave-1 Sync hook) applies `gateway/` (D-055), whose service addresses are now `${NS_AI}`/`${NS_OBS}` template variables on both targets. **`smoke.sh` passes against the OpenShift gateway** (through a port-forward): no key 401, demo-user on the LLM 403, the probe gets a mock completion through the guard 200. After a plugin change APISIX needs a restart: k3d rolls it with a checksum annotation, which the Helm values in git can't compute.
-- **Not yet in the overlay:** NetworkPolicies (workstream 2), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`), the Grafana URL and the console's Tempo token (workstream 6).
+- **Not yet in the overlay:** NetworkPolicies (workstream 2), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`).
 
 ## Workstreams
 
@@ -232,10 +232,10 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 
 1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the Application (**done**: `aigw-workloads`, first sync verified 2026-10-22); BuildConfigs and ImageStreams (**done**). An app-of-apps root comes when there is more than one Application.
 2. **Platform fit.** `restricted-v2` (**done**: every workload runs with an assigned UID, no exceptions so far), NetworkPolicies for OVN-K (**done**, verified by `scripts/openshift/verify-netpol.sh`), Admin allow-list (**done**), Routes with oauth-proxy (**done** for the gateway API, console and kill-switch panel; Grafana with workstream 3), evidence viewer replacement (OS-13: `make ui UI=evidence`, workstream 6). See D-056.
-3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the console's trace reader and Grafana link, the evidence CLI's readers.
+3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the evidence CLI's readers. The console's Grafana link and trace view ("Where it went") are done: it reads tenant `demo` through the Tempo gateway with its own pod token and the service CA, allowed by ClusterRoleBinding `aigw-console-tempo-reader` (`platform.sh`).
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
 5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
-6. **Operator tooling.** CLI and tests read Route URLs; console Grafana link; `make status` / `logs` / `ui` on OpenShift.
+6. **Operator tooling.** CLI and tests read Route URLs; `make status` / `logs` / `ui` on OpenShift.
 7. **Verification.** `make up` twice (idempotent), `make test` green on OpenShift, `make demo-all`, an evidence bundle that verifies, `verify-netpol.sh` passing on OVN-K. Record deviations as D-0xx in `DECISIONS.md`.
 
 ## Risks
