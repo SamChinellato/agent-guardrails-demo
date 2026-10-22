@@ -221,7 +221,7 @@ Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gate
 - **`make openshift-check`** runs both drift checks (overlay pins, root kustomization) with no cluster.
 - **Secrets** come from `gen-secrets.sh`, which now uses `NS_GATEWAY`/`NS_AI`/`NS_OBS` from `lib.sh` (prefixed `aigw-` on OpenShift); both targets share the values in `.secrets/`.
 - **First sync (2026-10-22, `8a6900b`).** Synced from `openshift-migration` with the deploy key. Every `aigw-ai` pod and etcd ready under `restricted-v2` (UIDs assigned by OpenShift); image triggers write the build digest into the pod spec and Argo stays Synced. The kill switch stays unready until APISIX exists (`apisix-admin` doesn't resolve).
-- **APISIX and the bootstrap (2026-10-22).** `aigw-apisix` runs the pinned chart under `restricted-v2` with no exception needed (OS-06). The `gateway-bootstrap` PostSync Job applies `gateway/` (D-055). After a plugin change APISIX needs a restart: k3d rolls it with a checksum annotation, which the Helm values in git can't compute.
+- **APISIX and the bootstrap (2026-10-22).** `aigw-apisix` runs the pinned chart under `restricted-v2` with no exception needed (OS-06). The `gateway-bootstrap` Job (a wave-1 Sync hook) applies `gateway/` (D-055), whose service addresses are now `${NS_AI}`/`${NS_OBS}` template variables on both targets. **`smoke.sh` passes against the OpenShift gateway** (through a port-forward): no key 401, demo-user on the LLM 403, the probe gets a mock completion through the guard 200. After a plugin change APISIX needs a restart: k3d rolls it with a checksum annotation, which the Helm values in git can't compute.
 - **Not yet in the overlay:** NetworkPolicies (workstream 2), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`), the Grafana URL and the console's Tempo token (workstream 6).
 
 ## Workstreams
@@ -249,6 +249,8 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 - **Always name `monitoring.rhobs` kinds in full.** `oc get/delete prometheusrule` resolves to the platform's `monitoring.coreos.com` type, so a short name silently acts on the wrong API. Scripts use `prometheusrules.monitoring.rhobs`, `servicemonitors.monitoring.rhobs`, and so on.
 - **Collector ServiceMonitors must exclude the headless Service**, or every metric is scraped twice.
 - **`wait_for` hides its command's output** (`scripts/lib.sh`), so log after it, not inside it.
+- **An Argo PostSync hook waits for every resource to be healthy.** The kill switch is only ready once the bootstrap has written the gateway config, so a PostSync bootstrap deadlocked the first sync. It is a Sync hook in wave 1 with the kill switch in wave 2.
+- **APISIX upstream nodes are keyed by `host:port`.** Template variables must be interpolated in object keys too, or a node key keeps a literal `${NS_AI}` and the drift check still passes (desired and live agree).
 - **Set `TARGET` before sourcing `lib.sh`.** It picks the kubeconfig when sourced; setting it afterwards still targets k3d.
 
 ## Spikes before implementation
