@@ -76,9 +76,11 @@ The gateway's live provider is already OpenAI-compatible (`gateway/upstreams/llm
 - **Speed (measured).** About 72 tokens/s reading prompts and 7.5 tokens/s generating; a two-step agent task in 23–32 s against 18–27 s on the presenter's laptop. Long answers stream at half the laptop's speed; generation is bound by memory bandwidth, so more threads won't fix that.
 - **Not byte-identical to k3d.** Same 4-bit weights as the host's `granite4:micro`, but llama.cpp applies the GGUF's template and Ollama its own (501 vs 452 prompt tokens for the same messages), and the thread count changes the arithmetic. `temperature: 0` and `seed` still apply, and the thread count is pinned with the model.
 - **Prompt cache stays on**, as on the k3d host's Ollama. A step served from the cache can differ slightly from the same step computed fresh. This affects no requirement: `make test` and evidence (EVD-05) use the mock LLM.
-- **NetworkPolicy.** Only APISIX reaches `llamacpp` (it joins the `from-gateway` selector). The `gguf-fetch` Job needs egress to `huggingface.co` once.
-- **Version pins.** `LLAMACPP_IMAGE`/`LLAMACPP_DIGEST`, `GGUF_MODEL_REPO`/`GGUF_MODEL_REVISION` in `versions.env`, file SHA-256 in the manifest file.
-- **Trial leftovers.** `vllm.yaml` and `ollama.yaml` stay in `deploy/openshift/llm/` as the record of trials 4 and 5, scaled to zero, and are not part of the overlay.
+- **Under Argo CD** (D-060): `deploy/openshift/apps/ai/llamacpp.yaml` holds the `models` PVC (`Prune=false,Delete=false`), the Deployment and Service, and `gguf-fetch` as a Sync hook. Each sync it re-checks the staged file (about 20 s) and downloads only what is missing or wrong. ConfigMap `model-fetch` comes from the root kustomization.
+- **Mode switch** (D-060): the ConfigMap `llm-mode` in `aigw-gateway` (`mode: live` on a fresh install) is read by the gateway-bootstrap Job. Argo CD creates it once and then ignores its data. `make llm-mode MODE=mock|live TARGET=openshift` sets it and runs a copy of the bootstrap Job, which takes about 10 s. llama.cpp stays running in both modes, so switching back is instant.
+- **NetworkPolicy.** Only APISIX reaches `llamacpp` (it joins the `from-gateway` selector). Policy `gguf-fetch` gives that Job egress to public addresses on 443, the one exception to NFR-08.
+- **Version pins.** `LLAMACPP_IMAGE`/`LLAMACPP_DIGEST`, `GGUF_MODEL_REPO`/`GGUF_MODEL_REVISION` in `versions.env`, written out in the overlay and checked by `make openshift-check`, with the file SHA-256 in the manifest file.
+- **Trial leftovers.** `vllm.yaml` and `ollama.yaml` stay in `deploy/openshift/llm/` (with `fetch_model.py` and the hash manifests, which the overlay uses) as the record of trials 4 and 5, scaled to zero, and are not part of the overlay.
 
 ### Trial 4 results (2026-10-22)
 
@@ -224,7 +226,7 @@ Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gate
 - **Secrets** come from `gen-secrets.sh`, which now uses `NS_GATEWAY`/`NS_AI`/`NS_OBS` from `lib.sh` (prefixed `aigw-` on OpenShift); both targets share the values in `.secrets/`.
 - **First sync (2026-10-22, `8a6900b`).** Synced from `openshift-migration` with the deploy key. Every `aigw-ai` pod and etcd ready under `restricted-v2` (UIDs assigned by OpenShift); image triggers write the build digest into the pod spec and Argo stays Synced. The kill switch stays unready until APISIX exists (`apisix-admin` doesn't resolve).
 - **APISIX and the bootstrap (2026-10-22).** `aigw-apisix` runs the pinned chart under `restricted-v2` with no exception needed (OS-06). The `gateway-bootstrap` Job (a wave-1 Sync hook) applies `gateway/` (D-055), whose service addresses are now `${NS_AI}`/`${NS_OBS}` template variables on both targets. **`smoke.sh` passes against the OpenShift gateway** (through a port-forward): no key 401, demo-user on the LLM 403, the probe gets a mock completion through the guard 200. After a plugin change APISIX needs a restart: k3d rolls it with a checksum annotation, which the Helm values in git can't compute.
-- **Not yet in the overlay:** NetworkPolicies (workstream 2), live LLM (`llamacpp`, workstream 5; `LLM_MODEL` is `demo`).
+- **Live LLM** is in the overlay (workstream 5, D-060). The agents' `LLM_MODEL` stays `demo`; it's cosmetic, because the gateway's llm upstream sets the model.
 
 ## Workstreams
 
@@ -234,7 +236,7 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 2. **Platform fit.** `restricted-v2` (**done**: every workload runs with an assigned UID, no exceptions so far), NetworkPolicies for OVN-K (**done**, verified by `scripts/openshift/verify-netpol.sh`), Admin allow-list (**done**), Routes with oauth-proxy (**done** for the gateway API, console and kill-switch panel; Grafana with workstream 3), evidence viewer replacement (OS-13: `make ui UI=evidence`, workstream 6). See D-056.
 3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the evidence CLI's readers. The console's Grafana link and trace view ("Where it went") are done: it reads tenant `demo` through the Tempo gateway with its own pod token and the service CA, allowed by ClusterRoleBinding `aigw-console-tempo-reader` (`platform.sh`).
 4. **Policy hot reload.** **Done** (D-059): the `policy-sync` sidecar on both targets; k3d no longer sets `sync-frequency=5s`. OpenShift reloads in 1.4–2.9 s (was 60–90 s).
-5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
+5. **Live LLM.** **Done** (D-060): llama.cpp under Argo CD, always running; fresh installs start live; `make llm-mode MODE=mock|live` switches at runtime on both targets.
 6. **Operator tooling.** CLI and tests read Route URLs; `make status` / `logs` / `ui` on OpenShift.
 7. **Verification.** `make up` twice (idempotent), `make test` green on OpenShift, `make demo-all`, an evidence bundle that verifies, `verify-netpol.sh` passing on OVN-K. Record deviations as D-0xx in `DECISIONS.md`.
 

@@ -34,7 +34,7 @@ oc -n "$NS_GATEWAY" get job gateway-bootstrap -o json \
   | jq --arg name "$job" '{apiVersion, kind,
         metadata: {name: $name, namespace: .metadata.namespace, labels: .metadata.labels},
         spec: {backoffLimit: 0, activeDeadlineSeconds: .spec.activeDeadlineSeconds, ttlSecondsAfterFinished: 600,
-               template: {metadata: {labels: .spec.template.metadata.labels}, spec: .spec.template.spec}}}' \
+               template: {metadata: {labels: {app: .spec.template.metadata.labels.app}}, spec: .spec.template.spec}}}' \
   | oc apply -f - >/dev/null
 log "applying the gateway config (Job $job)"
 if ! oc -n "$NS_GATEWAY" wait --for=condition=complete "job/$job" --timeout=300s >/dev/null 2>&1; then

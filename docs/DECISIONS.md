@@ -649,7 +649,7 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 **On OpenShift.** The Job `gateway-bootstrap` in `aigw-gateway` is a Sync hook (wave 1) of `aigw-workloads`, so it runs on every sync; the kill switch is in wave 2, because it only becomes ready once the config exists and a PostSync hook would wait for it forever. It waits for the Admin API (APISIX is its own Application, `aigw-apisix`) and then runs the same script. A failed apply or a drift fails the sync, which Argo CD shows. Kill-switch state is preserved as on k3d.
 - **Image.** No pinned image had both curl and jq, so `gateway-bootstrap` is built in `aigw-build` from `deploy/openshift/bootstrap/Dockerfile`: the pinned Python base plus `curl` and `jq` at the Debian versions pinned in `versions.env` (`BOOTSTRAP_CURL_VERSION`, `BOOTSTRAP_JQ_VERSION`). Chosen by the operator over a Python rewrite or keeping the bootstrap in `make`. A Job can't carry an image trigger, so it pulls `:latest` on each run.
 - **Inputs.** `gateway/` comes from one ConfigMap per kind (`gateway-routes`, ...), generated in the root kustomization (D-054) and mounted at `/gateway/<kind>`; keys from the `apisix-admin` and `consumer-keys` Secrets; the live LLM is llama.cpp in `aigw-ai` (D-052).
-- **Not yet:** the NetworkPolicy that admits only this Job and the kill switch to the Admin API (workstream 2), and `LLM_MODE=live` (workstream 5; the Job sets `mock`).
+- **Not yet:** the NetworkPolicy that admits only this Job and the kill switch to the Admin API (workstream 2), and `LLM_MODE=live` (workstream 5; the Job sets `mock`). *Both done since: D-056 and D-060.*
 
 ## D-056: OpenShift exposure and network policy specifics (OS-04, workstream 2)
 
@@ -697,3 +697,20 @@ The guard used to mount `guard-policy` as a ConfigMap volume, so a change waited
 - **Network policies before rollouts on k3d.** `up.sh` now applies the NetworkPolicies before it waits for the ai rollouts. Otherwise, on an existing cluster, the old `guard-egress` blocks the new sidecar and the rollout never completes.
 - **Verified 2026-10-22.** On OpenShift, each change was a ConfigMap patch, timed until the guard logged `policy loaded`: 2.9 s and 1.4 s. On k3d, `test_policy_hot_reload_within_10s_and_monitor_mode_flags` saw the change after 1.3 s (4.2 s with the kubelet setting, D-028), and the full acceptance suite passed (107).
 - **Test isolation fix.** The evidence tests run S3, which leaves result scanning in monitor, and they run before the guard tests. Their fixture now ends with `make reset`, as it begins with one.
+
+## D-060: OpenShift live LLM under Argo CD; switching the LLM mode at runtime (OS-16, workstream 5)
+
+Presenter's choices (2026-10-22): switch at runtime, llama.cpp always on, fresh installs start in **live** mode (k3d keeps `mock` as its default).
+
+- **llama.cpp in the overlay.** The Deployment, Service, `models` PVC and `gguf-fetch` Job moved from the hand-applied trial file into `deploy/openshift/apps/ai/llamacpp.yaml`. The PVC holds the verified weights, so it is never pruned or deleted with the Application. `gguf-fetch` is a Sync hook (`BeforeHookCreation`): each sync re-checks the file's SHA-256 (about 20 s) and downloads only when it's missing or wrong. On the first sync after the move, Argo pruned the hand-made Job of the same name instead of running the hook; from the next sync on, the hook ran.
+- **The mode is a ConfigMap Argo creates once.** `llm-mode` (`mode: live`) in `aigw-gateway`, read by the gateway-bootstrap Job. The Application ignores its data, like `guard-policy` (D-043), so a sync applies the current mode rather than resetting it.
+- **`make llm-mode MODE=mock|live`.** On OpenShift it sets the ConfigMap and runs a copy of the last bootstrap Job: the same image, Secrets and mounts, and the `app: gateway-bootstrap` label that the Admin API's NetworkPolicy admits. That way the change goes through the same code and network path as a sync. It refuses `live` while llama.cpp isn't ready. On k3d it re-runs the gateway bootstrap with `LLM_MODE`, after the live prerequisites check (host Ollama). Only the gateway's llm upstream changes; the agents' `LLM_MODEL` is cosmetic, since the upstream sets the model.
+- **Egress for the download.** NetworkPolicy `gguf-fetch` allows that Job TCP 443 to public addresses (all private, CGNAT, cluster and node ranges excluded). A NetworkPolicy can't name a host. Every file is checked against its pinned SHA-256 before llama.cpp may load it. This is the only exception to "no internet" (NFR-08).
+- **Pins checked.** The overlay writes out the llama.cpp and Python images by digest, plus the GGUF repository and revision. `check-overlay-pins.sh` now also compares the repository and revision with `versions.env`.
+- **Argo CD's image rule is keyed on the image triggers.** It ignores an image only if the Deployment's own `image.openshift.io/triggers` annotation names that container. Pinned containers (policy-sync, llamacpp) stay tracked, with no list of names to maintain. The match is on the annotation because it's the same on the desired and live objects, while a trigger rewrites the image itself.
+- **Verified 2026-10-22.**
+  - A console chat on the live model answered in 14 s. llama.cpp logged the requests: prompts about 77 tokens/s, generation about 13 tokens/s.
+  - `make llm-mode` on OpenShift: to mock in 9 s, where the same question got the mock's scripted reply, and back to live. On k3d: 3 s to mock and 5 s to live.
+  - Argo stayed Synced and Healthy after each switch.
+  - A pod labelled `gguf-fetch` reached huggingface.co; one without the label was blocked.
+  - `verify-netpol.sh` passes all 17 flows, including the guard's new API server flow (D-059).

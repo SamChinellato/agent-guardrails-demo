@@ -20,6 +20,7 @@ checks=(
   "guard mcp-docs.aigw-ai.svc 8000 OPEN"                          # inspecting proxy (F3)
   "guard apisix-admin.aigw-gateway.svc 9180 blocked"
   "guard 1.1.1.1 443 blocked"
+  "guard kubernetes.default.svc 443 OPEN"                         # policy-sync sidecar (D-059), apiserver-egress
   "console kubernetes.default.svc 443 OPEN"                       # guard-policy (D-043), apiserver-egress
   "console aigw-prometheus.aigw-observability.svc 9090 OPEN"
   "console killswitch.aigw-gateway.svc 8000 OPEN"
