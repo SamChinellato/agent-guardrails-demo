@@ -151,7 +151,7 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 | Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
 | Prometheus, Alertmanager, evidence, APISIX Admin | none | `make ui UI=…` / `make admin-ui` port-forward |
-| Loki gateway | `loki-aigw-observability.<domain>`, created by the Loki Operator and not removable | Closed: NetworkPolicy `loki-gateway` admits no router traffic, so it answers 503 (D-063) |
+| Loki gateway | `loki-aigw-observability.<domain>`, created by the Loki Operator and not removable | Closed: a router allowlist that admits no client (`loki-route.sh`), plus NetworkPolicy `loki-gateway` (D-063) |
 
 Hosts (from `subdomain`, so the same on any cluster): `aigw-gateway.<domain>` (only `/llm`, `/mcp`, `/agents`, `/demo`), `aigw-console.<domain>/console`, `aigw-killswitch.<domain>`. Verified 2026-10-22 (D-056).
 
@@ -271,6 +271,7 @@ Deferred on 2026-10-23; the demo is presented from the console, which doesn't ne
 - **Tempo's webhook checks the requester's own rights.** Enabling `openshift` tenancy needs the applier (Argo CD's controller) to be able to create TokenReviews (D-058).
 - **Grafana 13 under the operator: disable plugin preinstall.** Otherwise the bundled Prometheus, Loki and Tempo plugins end up unregistered ("Plugin not registered") after a failed background update on the read-only plugin directory.
 - **The operator's Grafana forgets its datasources on restart** (emptyDir) until the next resync; the CRs set `resyncPeriod: 1m`.
+- **NetworkPolicy doesn't stop the router from reaching pods on its own node.** The default router runs on the host network on every worker, and OVN-Kubernetes admits a node's host network to local pods. To close a Route, use the router's `ip_allowlist` annotation (D-063).
 - **Set `TARGET` before sourcing `lib.sh`.** It picks the kubeconfig when sourced; setting it afterwards still targets k3d.
 
 ## Spikes before implementation

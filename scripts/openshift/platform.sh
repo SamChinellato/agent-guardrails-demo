@@ -22,3 +22,4 @@ done
 oc apply -f "$ROOT/deploy/openshift/platform/telemetry.yaml" >/dev/null
 
 "$ROOT/scripts/openshift/apiserver-egress.sh"
+"$ROOT/scripts/openshift/loki-route.sh"

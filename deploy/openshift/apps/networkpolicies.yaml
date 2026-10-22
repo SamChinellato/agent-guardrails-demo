@@ -244,11 +244,10 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: loki-gateway, namespace: aigw-observability}
 spec:
-  # The Loki Operator always creates a public Route to its gateway (loki-<ns>.<domain>) and
-  # puts it back if deleted. Logs are read in Grafana or by port-forward (OS-04), so the
-  # gateway admits only its in-cluster clients and the router gets nothing (D-063):
-  # the collector and Grafana (writes, reads), APISIX's loki-logger (D-058), and platform
-  # monitoring on the metrics ports.
+  # The Loki gateway admits only its in-cluster clients (D-063): the collector and Grafana
+  # (writes, reads), APISIX's loki-logger (D-058), and platform monitoring on the metrics
+  # ports. Not the router, but that alone doesn't close the operator's public Route (a
+  # host-network router reaches pods on its own node): scripts/openshift/loki-route.sh does.
   podSelector:
     matchLabels: {app.kubernetes.io/component: lokistack-gateway}
   policyTypes: [Ingress]

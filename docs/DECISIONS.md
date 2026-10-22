@@ -742,14 +742,11 @@ The demo script's beats were run through the console API on OpenShift on 2026-10
 
 The console serves the image named by `ARCHITECTURE_IMAGE` at `/console/architecture.png`, the opening slide and its **How it works** link. The OpenShift overlay sets it to `architecture-openshift.png`; k3d keeps the default.
 
-## D-063: The Loki Operator's public Route is closed by NetworkPolicy
+## D-063: The Loki Operator's public Route is closed
 
 The Loki Operator creates a Route to its gateway on OpenShift (`loki-aigw-observability.<domain>`, reencrypt) and recreates it if deleted; the `LokiStack` has no setting to turn it off. It was reachable from the internet (behind the OpenShift login and the gateway's tenant RBAC), against OS-04, which keeps logs to Grafana and port-forward.
 
-NetworkPolicy `loki-gateway` in `aigw-observability` (`deploy/openshift/apps/networkpolicies.yaml`, under Argo CD) admits the gateway's in-cluster clients only:
+- **Router allowlist.** `scripts/openshift/loki-route.sh` (run by `platform.sh`) annotates the Route with `haproxy.router.openshift.io/ip_allowlist: 127.0.0.1/32`, so every router refuses the connection. The operator merges annotations, so this survives its reconciles; a recreated Route (a fresh LokiStack) needs the script again.
+- **NetworkPolicy `loki-gateway`** (`aigw-observability`, under Argo CD) admits only the gateway's in-cluster clients: the collector and Grafana (same namespace), APISIX's `loki-logger` (D-058) from `aigw-gateway`, and platform monitoring on the metrics ports 8081 and 8083. On its own it did not close the Route: the router runs on the host network on every worker, and OVN-Kubernetes always admits a node's host network to pods on that node (kubelet probes), so a router reached the gateway pod on its own node. It stays as defence in depth for pod traffic.
 
-- the collector and Grafana (same namespace) on 8080, plus the metrics ports
-- APISIX's `loki-logger` (D-058) from `aigw-gateway` on 8080
-- platform monitoring (`policy-group: monitoring`) on the metrics ports 8081 and 8083
-
-The router is not admitted, so the Route answers 503. `scripts/openshift/verify-netpol.sh` checks that. Port-forward is not subject to NetworkPolicy, so the evidence CLI's planned reader (workstream 6) still works.
+`scripts/openshift/verify-netpol.sh` checks that the Route answers nothing. Port-forward isn't subject to either, so the evidence CLI's planned reader (workstream 6) still works. Verified 2026-10-23: the Route refuses connections; APISIX access logs and the guard's decision records (via the collector) still reach Loki, and Grafana reads them.
