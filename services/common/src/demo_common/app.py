@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 import uvicorn
 from fastapi import FastAPI, Response
-from opentelemetry import trace
+from opentelemetry import propagate, trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -17,11 +17,31 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from demo_common.logs import setup_logging
 
 ReadyCheck = Callable[[], Awaitable[bool] | bool]
+
+
+class SampledOnlyTraceContext(TraceContextTextMapPropagator):
+    """W3C trace context that sends only the sampled flag. The SDK also sets the newer
+    random-trace-id flag (traceparent ...-03), and APISIX's opentelemetry-lua rejects any
+    flags above 02 and starts a new trace, so a request the gateway blocks lost its link
+    to the caller's trace (D-061)."""
+
+    def inject(self, carrier, context=None, setter=None):
+        span_context = trace.get_current_span(context).get_span_context()
+        if span_context.is_valid and span_context.trace_flags & ~trace.TraceFlags.SAMPLED:
+            context = trace.set_span_in_context(trace.NonRecordingSpan(trace.SpanContext(
+                span_context.trace_id, span_context.span_id, span_context.is_remote,
+                trace.TraceFlags(span_context.trace_flags & trace.TraceFlags.SAMPLED),
+                span_context.trace_state)), context)
+        if setter is None:
+            super().inject(carrier, context)
+        else:
+            super().inject(carrier, context, setter)
 
 
 def setup_telemetry(service: str) -> None:
@@ -40,6 +60,7 @@ def setup_telemetry(service: str) -> None:
         set_logger_provider(log_provider)
         logging.getLogger().addHandler(LoggingHandler(logger_provider=log_provider))
     trace.set_tracer_provider(provider)
+    propagate.set_global_textmap(SampledOnlyTraceContext())
     HTTPXClientInstrumentor().instrument()
 
 
