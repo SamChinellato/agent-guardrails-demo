@@ -77,6 +77,22 @@ The gateway's live provider is already OpenAI-compatible (`gateway/upstreams/llm
 - **NetworkPolicy.** Only APISIX reaches vLLM (it joins the `from-gateway` selector); the init step needs egress to `huggingface.co` once, or the weights are staged by a build-namespace Job.
 - **Version pins.** vLLM CPU image by digest, model revision and file SHA-256s in `versions.env`.
 
+### Trial 4 results (2026-10-22)
+
+Deployed with vLLM v0.31.0 CPU (`deploy/openshift/llm/`), 12 CPUs and 24–32 GiB, model staged and verified on a CephFS volume.
+
+| | Result |
+|---|---|
+| Startup | Weights 23 s; compile and warm-up 3.5–4.7 min (cache in `/tmp`, lost on restart) |
+| Tool calling (`hermes` parser) | **Works**: a correct `search_documents` call |
+| Same seed, temperature 0 | **Identical** output on repeat |
+| Generation speed | **1.6–1.9 tokens/s** in bf16 and in fp32 |
+| Prompt reading | ~65 tokens/s (a 2,600-token prompt: 40 s before the first token) |
+
+**Too slow for a live demo.** CPU generation is limited by memory bandwidth: each token reads all weights (about 7 GB in bf16, 13 GB in fp32). One agent step with documents would take minutes and break the gateway's 120 s timeout. Ollama's 4-bit GGUF reads about 2 GB per token. vLLM is scaled to zero pending **Q-16**.
+
+Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, which vLLM rejects (`enableServiceLinks: false`); a single-node (RWO) volume can't be shared by the fetch Job and the server (moved to CephFS RWX, with a verify-only init container).
+
 ## Images: in-cluster builds (OS-02)
 
 - A build namespace (no default-deny NetworkPolicy, so the guard build can fetch its classifier) holds one binary `BuildConfig` per service, Docker strategy, using `services/Dockerfile` with the same `--build-arg`s as `build-images.sh` (pinned base images, classifier SHA-256s).
@@ -182,13 +198,13 @@ Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted after
 1. **Done.** **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
 2. **Done.** **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
 3. **Done.** **APISIX logs:** `loki-logger` to the LokiStack gateway with a write-only token (the Red Hat collector has no Loki receiver).
-4. **vLLM CPU:** dtype on AVX-512 without BF16, tokens per second, Granite tool calling through the gateway's `ai-proxy`.
+4. **Done, too slow.** **vLLM CPU:** works (tool calls, determinism) but 1.6–1.9 tokens/s; see [Trial 4 results](#trial-4-results-2026-10-22) and **Q-16**.
 5. **Done.** **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.
 6. **Settled.** **openshift-gitops permissions:** operators and namespaces are installed by `make` as cluster-admin (`scripts/openshift/install-operators.sh`); Argo CD only manages namespaced objects in the `aigw-` namespaces.
 
 ## Open questions
 
-None at the moment. New ones will be added here as spikes turn them up.
+- **Q-16** Live LLM: vLLM on CPU is too slow at full precision. Choose between a quantized model on vLLM, Ollama in the cluster (same 4-bit model as k3d), a GPU node, or mock-only on OpenShift.
 
 ## Decisions
 

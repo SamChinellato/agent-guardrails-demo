@@ -1,0 +1,13 @@
+# ibm-granite/granite-4.0-micro @ 56111ae135df9c53a78c99028e7bc24035a9e979: every file vLLM loads, with its SHA-256 (sha256sum format).
+# Weights from the Hub's LFS metadata; small files hashed when pinned (2026-10-22).
+e11a24434769f1926c2b73ea4b6bf7115533e3644d553d5a347797082e65c0f2  config.json
+7c04cb9d2ba771f7528fba5a7104999cdaf7566d02b5fbd58472829f62716177  generation_config.json
+9524df67b77a7b25a2dfee898f75b316a157eb9d855b51e32aeac79d7c8a83ce  chat_template.jinja
+e2bad66439538cb4d5a7580680932432ed9ece9d3b8577e675512bdf11599253  tokenizer.json
+a5ec5daab12ba090a90f3dd169c8f9c275557013a87b9c1258dc7cb497a35c86  tokenizer_config.json
+c08676c49fd7969a3130f72be6d4bf34da66aa484a6e21dffe359893a1bd5f2e  special_tokens_map.json
+8af71076de8b0b626eed0f4c984faf0a7c062479164b2a31308a948524d4f69c  vocab.json
+b6fe424e334903f7fb84d3a106d9730455f4744b9fe3c21ee136d97a00e72502  merges.txt
+208959f5beb2dd3620fb5cf27d73fb83dab0be74d79486ef0a28e0749a4bb0da  model.safetensors.index.json
+131a793b45ddeee8e7c83a77846c350b52316158917ef589c006c4a10f2de952  model-00001-of-00002.safetensors
+6b6383a5aca723940d9e4be63fa1575e9c44941e7f5d489b923c0eaeada2c02f  model-00002-of-00002.safetensors

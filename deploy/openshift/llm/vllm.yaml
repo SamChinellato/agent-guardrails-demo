@@ -1,0 +1,167 @@
+# Live-mode LLM on OpenShift (OS-03): vLLM's CPU backend serving Granite 4.0 Micro with an
+# OpenAI-compatible API at vllm.aigw-ai:8000 (the gateway's llm.live upstream). No GPUs:
+# the workers have AVX-512F/VNNI, no AVX512-BF16/AMX. The weights are staged once into a
+# shared (RWX) volume by the model-fetch Job, verified file by file
+# (granite-4.0-micro.sha256). The vLLM pod only re-verifies them (init container, no
+# network) and waits until they are complete, so it needs no egress (HF_HUB_OFFLINE).
+# ${VLLM_REF}, ${LLM_MODEL_REPO}, ${LLM_MODEL_REVISION} and ${PYTHON_BASE_REF} come from
+# versions.env. ConfigMap model-fetch (fetch_model.py + the manifest) is created by the
+# deploy script.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: models
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  accessModes: [ReadWriteMany]          # the fetch Job and vLLM mount it at the same time
+  storageClassName: ocs-storagecluster-cephfs
+  resources: {requests: {storage: 20Gi}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-fetch
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {app: model-fetch}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: fetch
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "/fetch/fetch_model.py"]
+          env:
+            - {name: MODEL_REPO, value: "${LLM_MODEL_REPO}"}
+            - {name: MODEL_REVISION, value: "${LLM_MODEL_REVISION}"}
+            - {name: MODEL_DIR, value: /models/granite-4.0-micro}
+            - {name: MANIFEST, value: /fetch/granite-4.0-micro.sha256}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: fetch, mountPath: /fetch, readOnly: true}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: fetch
+          configMap: {name: model-fetch}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: aigw-ai
+  labels: {app: vllm, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector: {app: vllm}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: aigw-ai
+  labels: {app: vllm, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}           # never two 12-CPU pods at once
+  selector:
+    matchLabels: {app: vllm}
+  template:
+    metadata:
+      labels: {app: vllm}
+    spec:
+      automountServiceAccountToken: false
+      # No <SVC>_PORT variables: the Service "vllm" would inject VLLM_PORT=tcp://..., which
+      # vLLM reads as its own setting and refuses to start
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        # Wait until model-fetch has staged every file with the pinned checksum (no network)
+        - name: verify-model
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "/fetch/fetch_model.py", "--verify-only"]
+          env:
+            - {name: MODEL_DIR, value: /models/granite-4.0-micro}
+            - {name: MANIFEST, value: /fetch/granite-4.0-micro.sha256}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: fetch, mountPath: /fetch, readOnly: true}
+      containers:
+        - name: vllm
+          image: ${VLLM_REF}
+          args:
+            - --model=/models/granite-4.0-micro
+            - --served-model-name=granite-4.0-micro
+            - --dtype=${VLLM_DTYPE}
+            - --max-model-len=16384
+            - --enable-auto-tool-choice
+            - --tool-call-parser=hermes
+            - --host=0.0.0.0
+            - --port=8000
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: HF_HOME, value: /tmp/hf}
+            - {name: HF_HUB_OFFLINE, value: "1"}
+            - {name: VLLM_NO_USAGE_STATS, value: "1"}       # NFR-08
+            - {name: DO_NOT_TRACK, value: "1"}
+            - {name: VLLM_CPU_KVCACHE_SPACE, value: "4"}     # GiB
+            - {name: VLLM_CPU_OMP_THREADS_BIND, value: "nobind"}
+            - {name: OMP_NUM_THREADS, value: "12"}
+          ports:
+            - {name: http, containerPort: 8000}
+          startupProbe:                  # loading and warm-up take minutes on CPU
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests: {cpu: "12", memory: 24Gi}
+            limits: {cpu: "12", memory: 32Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: shm
+          emptyDir: {medium: Memory, sizeLimit: 4Gi}
+        - name: fetch
+          configMap: {name: model-fetch}
