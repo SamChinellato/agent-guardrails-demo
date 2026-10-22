@@ -1,7 +1,10 @@
-# Gateway bootstrap on OpenShift (OS-10, D-055): after every sync of aigw-workloads, apply
+# Gateway bootstrap on OpenShift (OS-10, D-055): on every sync of aigw-workloads, apply
 # gateway/ to APISIX and check it for drift with scripts/gateway-apply.sh, the same code
 # k3d runs through a port-forward. A failed apply or a drift fails the sync, so Argo CD
 # shows it. Kill-switch state is preserved as on k3d.
+# A Sync hook in wave 1, not PostSync: PostSync waits for every resource to be healthy, and
+# the kill switch (wave 2) only becomes ready once this config exists. Wave 0 (the
+# ConfigMaps it mounts) is applied first.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -9,7 +12,8 @@ metadata:
   namespace: aigw-gateway
   labels: {app.kubernetes.io/part-of: ai-gateway-demo}
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 2

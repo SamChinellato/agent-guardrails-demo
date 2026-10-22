@@ -34,6 +34,8 @@ metadata:
   name: killswitch
   namespace: gateway
   annotations:
+    # After the gateway-bootstrap hook (wave 1): it reads its state from that config
+    argocd.argoproj.io/sync-wave: "2"
     image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"killswitch:latest","namespace":"aigw-build"},"fieldPath":"spec.template.spec.containers[?(@.name==\"killswitch\")].image"}]'
 spec:
   template:
