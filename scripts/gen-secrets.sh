@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Generate demo secrets into .secrets/ (gitignored, mode 600) and mirror them into
 # Kubernetes Secrets (REP-09). Existing values are reused, so re-runs change nothing.
+# Both targets get the same values from .secrets/; on OpenShift Argo CD never manages
+# Secrets, so this runs before the first sync (OS-09).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -33,17 +35,17 @@ apply_secret() {
 }
 
 log "applying Kubernetes Secrets"
-apply_secret gateway apisix-admin admin=apisix-admin-key viewer=apisix-viewer-key
-apply_secret gateway consumer-keys \
+apply_secret "$NS_GATEWAY" apisix-admin admin=apisix-admin-key viewer=apisix-viewer-key
+apply_secret "$NS_GATEWAY" consumer-keys \
   demo-user=consumer-demo-user researcher=consumer-researcher executor=consumer-executor probe=consumer-probe
-apply_secret gateway killswitch-tokens \
+apply_secret "$NS_GATEWAY" killswitch-tokens \
   operator=killswitch-operator-token guard=killswitch-guard-token alertmanager=killswitch-alertmanager-token
 # Callers of the killswitch get only their own token (KS-09)
-apply_secret ai killswitch-guard token=killswitch-guard-token
-apply_secret ai killswitch-operator token=killswitch-operator-token   # presenter console (D-043)
-apply_secret observability killswitch-alertmanager token=killswitch-alertmanager-token
+apply_secret "$NS_AI" killswitch-guard token=killswitch-guard-token
+apply_secret "$NS_AI" killswitch-operator token=killswitch-operator-token   # presenter console (D-043)
+apply_secret "$NS_OBS" killswitch-alertmanager token=killswitch-alertmanager-token
 # Agents and the console carry their own consumer key (7.7, DEMO-01)
-apply_secret ai agent-keys researcher=consumer-researcher executor=consumer-executor demo-user=consumer-demo-user
-kubectl -n observability create secret generic grafana-admin \
+apply_secret "$NS_AI" agent-keys researcher=consumer-researcher executor=consumer-executor demo-user=consumer-demo-user
+kubectl -n "$NS_OBS" create secret generic grafana-admin \
   --from-literal=admin-user=admin --from-file=admin-password="$DIR/grafana-admin-password" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null

@@ -27,7 +27,7 @@ define not_yet
 	@echo "make $@: not implemented yet (phase $(1)). See docs/REQUIREMENTS_STATUS.md." >&2; exit 2
 endef
 
-.PHONY: help tools admin-ui ui diagram prereqs prefetch up down reset status demo demo-all trip kill-reset \
+.PHONY: help openshift-check tools admin-ui ui diagram prereqs prefetch up down reset status demo demo-all trip kill-reset \
         policy-set evidence evidence-verify test clean-room logs pin-check
 
 help: ## List targets
@@ -42,6 +42,10 @@ prereqs: ## Check runtime (Docker/Podman), tools, memory, disk, ports, (live) ho
 pin-check: ## Fail if upstream image digests drifted from versions.env, or the OpenShift overlays from it
 	@scripts/openshift/check-overlay-pins.sh
 	@scripts/pin-digests.sh --check
+
+openshift-check: ## Fail if the OpenShift overlay drifted: pins vs versions.env, stale root kustomization.yaml (no cluster needed)
+	@scripts/openshift/check-overlay-pins.sh
+	@scripts/openshift/gen-root-kustomization.sh --check
 
 prefetch: ## Pull every pinned chart, image and (LLM_MODE=live) the host Ollama model
 	@scripts/prefetch.sh

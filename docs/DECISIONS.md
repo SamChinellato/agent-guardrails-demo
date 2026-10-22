@@ -627,3 +627,15 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 - `deploy/k3d/` (namespaces, ServiceMonitors, NetworkPolicies, evidence viewer): k3d only, because OpenShift replaces each of them
 
 `scripts/up.sh` applies the same files with the same `sed` substitution as before, so k3d behaviour is unchanged. The OpenShift overlay is `deploy/openshift/apps/{ai,gateway}` (`docs/OPENSHIFT_MIGRATION.md`, Repository layout).
+
+## D-054: Argo CD builds the OpenShift workloads from a repo-root kustomization.yaml
+
+**Change.** The OpenShift workloads need ConfigMaps from `scenarios/fixtures/` and `policy/` (and later `gateway/`), which k3d's `up.sh` creates with `kubectl create configmap --from-file=<dir>`. Kustomize only reads files under the kustomization's own directory, so the kustomization Argo CD builds sits at the repository root. It lists the two overlays and generates the ConfigMaps from the files in place. Chosen by the operator over relaxing Kustomize's load restrictor on the shared `openshift-gitops` instance, committing copies of the files, or keeping the ConfigMaps out of Argo.
+
+**How it works.**
+- `scripts/openshift/gen-root-kustomization.sh` writes it, because Kustomize can't take a directory and every file has to be listed. `make openshift-check` fails if the committed file is stale (a fixture added or removed).
+- ConfigMap names and keys match k3d's (no name hash; keys are file names).
+- `guard-policy` is created from git and then left alone: the Application ignores its `data` (`RespectIgnoreDifferences`), so console and `make policy-set` changes survive a sync. `guard-policy-baseline` follows git.
+- k3d doesn't use it.
+
+**Argo CD scope (OS-11).** `scripts/openshift/gitops.sh` creates a project `aigw` that allows only this repository, only the `aigw-*` namespaces and no cluster-scoped objects, and the Application `aigw-workloads` in it. The repository is read with a read-only deploy key generated into `.secrets/argocd-deploy-key`; its public half is added on GitHub by hand.

@@ -27,6 +27,9 @@ else
   # Keep the demo's k3d kubeconfig out of ~/.kube/config
   export KUBECONFIG="${KUBECONFIG_DEMO:-$ROOT/.kube/config}"
 fi
+# Demo namespaces: prefixed on the shared OpenShift cluster (OS-12)
+if [[ "$TARGET" == openshift ]]; then NS_PREFIX=aigw-; else NS_PREFIX=; fi
+NS_GATEWAY="${NS_PREFIX}gateway" NS_AI="${NS_PREFIX}ai" NS_OBS="${NS_PREFIX}observability"
 
 CLUSTER_NAME="ai-gateway-demo"
 REGISTRY_NAME="k3d-registry.localhost"   # k3d prefixes "k3d-" to "registry.localhost"

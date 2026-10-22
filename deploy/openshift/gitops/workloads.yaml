@@ -1,0 +1,43 @@
+# Argo CD for the OpenShift target (OS-08, OS-11), applied by scripts/openshift/gitops.sh
+# with ${GITOPS_REPO} and ${GITOPS_REVISION} filled in. The cluster-wide openshift-gitops
+# instance deploys into the aigw- namespaces (labelled managed-by); this project limits it
+# to them, to this repository, and to namespaced objects: operators, namespaces and other
+# cluster-scoped pieces stay with `make up` as cluster-admin.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: aigw
+  namespace: openshift-gitops
+spec:
+  description: AI gateway demo (docs/OPENSHIFT_MIGRATION.md)
+  sourceRepos: ["${GITOPS_REPO}"]
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: "aigw-*"}
+  clusterResourceWhitelist: []
+---
+# The workloads: the repo-root kustomization.yaml (the overlays plus their ConfigMaps)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aigw-workloads
+  namespace: openshift-gitops
+spec:
+  project: aigw
+  source:
+    repoURL: "${GITOPS_REPO}"
+    targetRevision: "${GITOPS_REVISION}"
+    path: .
+  destination: {server: https://kubernetes.default.svc}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [RespectIgnoreDifferences=true]
+  ignoreDifferences:
+    # The image triggers write the current digest into the pod spec (OS-02)
+    - group: apps
+      kind: Deployment
+      jqPathExpressions: ['.spec.template.spec.containers[].image']
+    # Changed at runtime by the console and make policy-set (D-043)
+    - kind: ConfigMap
+      name: guard-policy
+      namespace: aigw-ai
+      jsonPointers: [/data]
