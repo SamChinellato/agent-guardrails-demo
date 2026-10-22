@@ -1,0 +1,106 @@
+# OpenTelemetry Collector (OS-01, F7), Red Hat build: the one writer to Tempo and Loki.
+# Service otel-collector.aigw-observability:4317/4318 (OTLP from every service). Exports
+# with its own service-account token:
+#   traces  -> Tempo gateway, tenant demo           (tempo-rbac.yaml)
+#   logs    -> LokiStack gateway, application tenant (loki-rbac.yaml)
+#   metrics -> Prometheus exporter :8889, scraped by the MonitoringStack
+# k8s_attributes adds k8s.namespace.name (and pod, deployment) by the sender's pod IP; the
+# transform copies it to kubernetes.namespace_name, which the Loki gateway filters reads on.
+# APISIX access logs don't come through here: the Red Hat build has no Loki receiver, so
+# APISIX's loki-logger pushes to the Loki gateway with its own write-only token
+# (apisix-log-writer, loki-rbac.yaml).
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: otel-collector, namespace: aigw-observability}
+---
+# k8s_attributes: read pod and namespace metadata
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-otel-collector-k8sattributes}
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-otel-collector-k8sattributes}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-otel-collector-k8sattributes}
+subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
+---
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel
+  namespace: aigw-observability
+spec:
+  mode: deployment
+  replicas: 1
+  serviceAccount: otel-collector
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  config:
+    extensions:
+      health_check: {endpoint: "0.0.0.0:13133"}
+      bearertokenauth:
+        filename: /var/run/secrets/kubernetes.io/serviceaccount/token
+    receivers:
+      otlp:
+        protocols:
+          grpc: {endpoint: "0.0.0.0:4317"}
+          http: {endpoint: "0.0.0.0:4318"}
+    processors:
+      memory_limiter: {check_interval: 1s, limit_percentage: 80, spike_limit_percentage: 25}
+      batch: {timeout: 1s, send_batch_size: 512}   # short timeout: OBS-06 freshness
+      k8s_attributes:
+        auth_type: serviceAccount
+        passthrough: false
+        pod_association:
+          - sources: [{from: connection}]
+        extract:
+          metadata: [k8s.namespace.name, k8s.pod.name, k8s.deployment.name]
+      transform/logs:
+        error_mode: ignore
+        log_statements:
+          - context: resource
+            statements:
+              - set(attributes["kubernetes.namespace_name"], attributes["k8s.namespace.name"])
+    exporters:
+      otlp_grpc/tempo:
+        endpoint: tempo-tempo-gateway.aigw-observability.svc.cluster.local:4317
+        tls: {ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}
+        auth: {authenticator: bearertokenauth}
+        headers: {X-Scope-OrgID: demo}
+      otlp_http/loki:
+        endpoint: https://loki-gateway-http.aigw-observability.svc.cluster.local:8080/api/logs/v1/application/otlp
+        tls: {ca_file: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}
+        auth: {authenticator: bearertokenauth}
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        resource_to_telemetry_conversion: {enabled: true}
+        enable_open_metrics: true
+    service:
+      extensions: [health_check, bearertokenauth]
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus: {host: 0.0.0.0, port: 8888}
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, k8s_attributes, batch]
+          exporters: [otlp_grpc/tempo]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, k8s_attributes, transform/logs, batch]
+          exporters: [otlp_http/loki]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, k8s_attributes, batch]
+          exporters: [prometheus]

@@ -37,6 +37,28 @@ apiVersion: v1
 kind: ServiceAccount
 metadata: {name: loki-reader, namespace: aigw-observability}
 ---
+# APISIX's loki-logger pushes access logs straight to the gateway (the Red Hat collector has
+# no Loki receiver). Its plugin config can only carry a static header, so this writer gets a
+# long-lived token Secret, rendered into gateway/ by the bootstrap (encrypted at rest by
+# APISIX: loki-logger encrypt_fields = headers). It can only write application logs.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: apisix-log-writer, namespace: aigw-gateway}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: apisix-log-writer-token
+  namespace: aigw-gateway
+  annotations: {kubernetes.io/service-account.name: apisix-log-writer}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-apisix-loki-writer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-writer}
+subjects: [{kind: ServiceAccount, name: apisix-log-writer, namespace: aigw-gateway}]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata: {name: aigw-otel-collector-loki-writer}

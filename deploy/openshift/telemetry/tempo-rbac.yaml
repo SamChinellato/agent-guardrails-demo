@@ -1,0 +1,36 @@
+# Access to the Tempo gateway (OS-15): SubjectAccessReview on tempo.grafana.com/<tenant>
+# with resource name "traces". The collector writes; Grafana, the console and the
+# evidence CLI read (SA tempo-reader). One tenant, "demo", holds only demo traces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-tempo-demo-writer}
+rules:
+  - apiGroups: [tempo.grafana.com]
+    resources: [demo]
+    resourceNames: [traces]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-tempo-demo-reader}
+rules:
+  - apiGroups: [tempo.grafana.com]
+    resources: [demo]
+    resourceNames: [traces]
+    verbs: [get]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: tempo-reader, namespace: aigw-observability}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-otel-collector-tempo-writer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-writer}
+subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-tempo-reader}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-reader}
+subjects: [{kind: ServiceAccount, name: tempo-reader, namespace: aigw-observability}]

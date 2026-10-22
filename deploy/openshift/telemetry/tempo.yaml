@@ -1,0 +1,40 @@
+# Traces (OS-01): Tempo Operator TempoMonolithic on an RBD volume, multi-tenant in openshift
+# mode (OS-15): the only mode Red Hat supports. A gateway in front authenticates
+# service-account tokens and authorises by SubjectAccessReview on
+# tempo.grafana.com/<tenant> "traces" (create = write, get = read; tempo-rbac.yaml).
+#   write  the OTel collector: OTLP gRPC to tempo-tempo-gateway:4317, X-Scope-OrgID: demo
+#   read   Grafana, the console's trace reader (D-046), the evidence CLI:
+#          https://tempo-tempo-gateway:8080/api/traces/v1/demo/tempo/api/...
+# extraConfig keeps the k3d settings: 24 h retention (OBS-07) and short blocks so search
+# sees traces within the 15 s freshness bound (OBS-06).
+apiVersion: tempo.grafana.com/v1alpha1
+kind: TempoMonolithic
+metadata:
+  name: tempo
+  namespace: aigw-observability
+spec:
+  storage:
+    traces:
+      backend: pv
+      size: 5Gi
+      storageClassName: ocs-storagecluster-ceph-rbd
+  ingestion:
+    otlp:
+      grpc: {enabled: true}
+      http: {enabled: true}
+  jaegerui: {enabled: false}
+  multitenancy:
+    enabled: true
+    mode: openshift
+    authentication:
+      - {tenantName: demo, tenantId: 2f0c9e57-6a38-4d0e-9a59-3a7d5c1f6b10}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  extraConfig:
+    tempo:
+      usage_report: {reporting_enabled: false}   # NFR-08
+      compactor:
+        compaction: {block_retention: 24h}
+      ingester:
+        max_block_duration: 30s
