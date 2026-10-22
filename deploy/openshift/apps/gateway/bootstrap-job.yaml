@@ -1,0 +1,80 @@
+# Gateway bootstrap on OpenShift (OS-10, D-055): after every sync of aigw-workloads, apply
+# gateway/ to APISIX and check it for drift with scripts/gateway-apply.sh, the same code
+# k3d runs through a port-forward. A failed apply or a drift fails the sync, so Argo CD
+# shows it. Kill-switch state is preserved as on k3d.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gateway-bootstrap
+  namespace: aigw-gateway
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels: {app: gateway-bootstrap}   # the only pod besides the kill switch the Admin API admits (workstream 2)
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          # Built from pinned inputs by build-images.sh; a Job can't carry an image trigger,
+          # so it pulls :latest each run
+          image: image-registry.openshift-image-registry.svc:5000/aigw-build/gateway-bootstrap:latest
+          imagePullPolicy: Always
+          # APISIX is its own Application and may still be starting: wait for the Admin API
+          command: ["bash", "-c"]
+          args:
+            - |
+              for i in $(seq 120); do
+                curl -sf -o /dev/null -H "X-API-KEY: $ADMIN_KEY" "$ADMIN_URL/apisix/admin/routes" && break
+                sleep 2
+              done
+              exec /usr/local/bin/gateway-apply.sh
+          env:
+            - {name: ADMIN_URL, value: "http://apisix-admin.aigw-gateway.svc.cluster.local:9180"}
+            - name: ADMIN_KEY
+              valueFrom: {secretKeyRef: {name: apisix-admin, key: admin}}
+            - {name: GW, value: /gateway}
+            - {name: LLM_MODE, value: mock}          # live mode is workstream 5
+            - name: CONSUMER_KEY_DEMO_USER
+              valueFrom: {secretKeyRef: {name: consumer-keys, key: demo-user}}
+            - name: CONSUMER_KEY_RESEARCHER
+              valueFrom: {secretKeyRef: {name: consumer-keys, key: researcher}}
+            - name: CONSUMER_KEY_EXECUTOR
+              valueFrom: {secretKeyRef: {name: consumer-keys, key: executor}}
+            - name: CONSUMER_KEY_PROBE
+              valueFrom: {secretKeyRef: {name: consumer-keys, key: probe}}
+            # The live LLM (OS-16): llama.cpp in aigw-ai, its alias, the pinned seed
+            - {name: OLLAMA_MODEL, value: granite-4.0-micro}
+            - {name: OLLAMA_SEED, value: "42"}
+            - {name: OLLAMA_URL, value: "http://llamacpp.aigw-ai.svc.cluster.local:8000"}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: consumers, mountPath: /gateway/consumers, readOnly: true}
+            - {name: plugin-configs, mountPath: /gateway/plugin_configs, readOnly: true}
+            - {name: plugin-metadata, mountPath: /gateway/plugin_metadata, readOnly: true}
+            - {name: routes, mountPath: /gateway/routes, readOnly: true}
+            - {name: upstreams, mountPath: /gateway/upstreams, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: consumers, configMap: {name: gateway-consumers}}
+        - {name: plugin-configs, configMap: {name: gateway-plugin-configs}}
+        - {name: plugin-metadata, configMap: {name: gateway-plugin-metadata}}
+        - {name: routes, configMap: {name: gateway-routes}}
+        - {name: upstreams, configMap: {name: gateway-upstreams}}

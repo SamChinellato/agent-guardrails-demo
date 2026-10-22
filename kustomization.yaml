@@ -58,3 +58,41 @@ configMapGenerator:
     namespace: aigw-gateway
     files:
       - gateway/plugins/ai-injection-guard.lua
+  # gateway/ for the gateway-bootstrap Job (OS-10), one ConfigMap per kind, mounted at
+  # /gateway/<kind> (ConfigMap keys can't hold a path)
+  - name: gateway-consumers
+    namespace: aigw-gateway
+    files:
+      - gateway/consumers/demo-user.json
+      - gateway/consumers/executor.json
+      - gateway/consumers/probe.json
+      - gateway/consumers/researcher.json
+  - name: gateway-plugin-configs
+    namespace: aigw-gateway
+    files:
+      - gateway/plugin_configs/pc-agents.json
+      - gateway/plugin_configs/pc-llm.json
+      - gateway/plugin_configs/pc-mcp.json
+  - name: gateway-plugin-metadata
+    namespace: aigw-gateway
+    files:
+      - gateway/plugin_metadata/opentelemetry.json
+  - name: gateway-routes
+    namespace: aigw-gateway
+    files:
+      - gateway/routes/agent-executor.json
+      - gateway/routes/agent-researcher.json
+      - gateway/routes/console-root.json
+      - gateway/routes/console.json
+      - gateway/routes/demo-documents.json
+      - gateway/routes/guard-policy.json
+      - gateway/routes/llm-scripted.json
+      - gateway/routes/llm.json
+      - gateway/routes/mcp-actions.json
+      - gateway/routes/mcp-docs.json
+  - name: gateway-upstreams
+    namespace: aigw-gateway
+    files:
+      - gateway/upstreams/guard.json
+      - gateway/upstreams/llm.live.json
+      - gateway/upstreams/llm.mock.json

@@ -1,0 +1,32 @@
+# ImageStream and binary Docker-strategy BuildConfig for the gateway-bootstrap image
+# (OS-10, D-055), rendered and started by scripts/openshift/build-images.sh like the services.
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: gateway-bootstrap
+  namespace: aigw-build
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  lookupPolicy: {local: true}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: gateway-bootstrap
+  namespace: aigw-build
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  runPolicy: Serial
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  source: {type: Binary}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      buildArgs:
+        - {name: PYTHON_BASE_REF, value: "${PYTHON_BASE_REF}"}
+        - {name: CURL_VERSION, value: "${BOOTSTRAP_CURL_VERSION}"}
+        - {name: JQ_VERSION, value: "${BOOTSTRAP_JQ_VERSION}"}
+  output:
+    to: {kind: ImageStreamTag, name: "gateway-bootstrap:latest"}

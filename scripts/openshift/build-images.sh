@@ -41,6 +41,22 @@ for svc in $members; do
       || { echo "build $svc failed:"; tail -20 "$TMP/$svc.log"; exit 1; } ) >&2 &
   pids+=($!)
 done
+# The gateway-bootstrap image (OS-10, D-055): its own Dockerfile plus scripts/gateway-apply.sh
+export BOOTSTRAP_CURL_VERSION BOOTSTRAP_JQ_VERSION
+render_env "$ROOT/deploy/openshift/bootstrap/build.yaml" | oc apply -f - >/dev/null
+btag="$(git_tag deploy/openshift/bootstrap scripts/gateway-apply.sh)"
+if oc -n "$NS" get istag "gateway-bootstrap:$btag" >/dev/null 2>&1; then
+  log "image gateway-bootstrap:$btag already built"
+else
+  log "building gateway-bootstrap:$btag"
+  mkdir -p "$TMP/bootstrap"
+  cp "$ROOT/deploy/openshift/bootstrap/Dockerfile" "$ROOT/scripts/gateway-apply.sh" "$TMP/bootstrap/"
+  ( oc -n "$NS" start-build gateway-bootstrap --from-dir="$TMP/bootstrap" --wait >"$TMP/gateway-bootstrap.log" 2>&1 \
+      && oc -n "$NS" tag gateway-bootstrap:latest "gateway-bootstrap:$btag" >/dev/null \
+      || { echo "build gateway-bootstrap failed:"; tail -20 "$TMP/gateway-bootstrap.log"; exit 1; } ) >&2 &
+  pids+=($!)
+fi
+
 failed=0
 for p in "${pids[@]}"; do wait "$p" || failed=1; done
 (( failed == 0 )) || die "image build failed (oc -n $NS get builds)"

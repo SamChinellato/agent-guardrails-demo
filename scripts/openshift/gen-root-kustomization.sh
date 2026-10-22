@@ -55,6 +55,12 @@ $(files scenarios/fixtures/documents)
 $(cd "$ROOT" && for f in $(LC_ALL=C ls gateway/plugins/*.lua); do
     printf '  - name: apisix-plugin-%s\n    namespace: aigw-gateway\n    files:\n      - %s\n' "$(basename "$f" .lua)" "$f"
   done)
+  # gateway/ for the gateway-bootstrap Job (OS-10), one ConfigMap per kind, mounted at
+  # /gateway/<kind> (ConfigMap keys can't hold a path)
+$(cd "$ROOT" && for d in consumers plugin_configs plugin_metadata routes upstreams; do
+    printf '  - name: gateway-%s\n    namespace: aigw-gateway\n    files:\n' "${d//_/-}"
+    files "gateway/$d"
+  done)
 EOF
 }
 
