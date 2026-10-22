@@ -15,8 +15,18 @@ if [[ -f "$ROOT/.env.local" ]]; then
 fi
 
 export PATH="$ROOT/.tools/bin:$PATH"
-# Keep the demo's kubeconfig out of ~/.kube/config
-export KUBECONFIG="${KUBECONFIG_DEMO:-$ROOT/.kube/config}"
+
+# Where the demo runs: k3d (local, default) or openshift (docs/OPENSHIFT_MIGRATION.md, OS-07)
+TARGET="${TARGET:-k3d}"
+[[ "$TARGET" == k3d || "$TARGET" == openshift ]] || { echo "error: TARGET must be k3d or openshift" >&2; exit 1; }
+export TARGET
+if [[ "$TARGET" == openshift ]]; then
+  # The cluster you logged in to with `oc login`; KUBECONFIG_DEMO overrides
+  export KUBECONFIG="${KUBECONFIG_DEMO:-${KUBECONFIG:-$HOME/.kube/config}}"
+else
+  # Keep the demo's k3d kubeconfig out of ~/.kube/config
+  export KUBECONFIG="${KUBECONFIG_DEMO:-$ROOT/.kube/config}"
+fi
 
 CLUSTER_NAME="ai-gateway-demo"
 REGISTRY_NAME="k3d-registry.localhost"   # k3d prefixes "k3d-" to "registry.localhost"
@@ -177,4 +187,24 @@ os_arch() {
     *) die "unsupported architecture $(uname -m)" ;;
   esac
   echo "${os}_${arch}"
+}
+
+# render_env FILE: substitute ${VAR} from the environment; fail if any referenced VAR is
+# unset, so a missing pin never renders as an empty string.
+render_env() {
+  local vars missing=()
+  vars="$(grep -oE '\$\{[A-Z0-9_]+\}' "$1" | sort -u | tr -d '${}')"
+  for v in $vars; do [[ -n "${!v:-}" ]] || missing+=("$v"); done
+  (( ${#missing[@]} == 0 )) || die "$1: unset template variables: ${missing[*]}"
+  # versions.env values are plain shell variables: export just these to envsubst
+  # shellcheck disable=SC2046
+  ( for v in $vars; do export "${v?}"; done; envsubst "$(printf '${%s} ' $vars)" <"$1" )
+}
+
+# require_openshift: fail unless logged in to an OpenShift cluster as a cluster-admin
+require_openshift() {
+  command -v oc >/dev/null 2>&1 || die "oc not found (OpenShift CLI)"
+  oc whoami >/dev/null 2>&1 || die "not logged in. Run: oc login <api-url>"
+  oc get clusterversion version >/dev/null 2>&1 || die "$(oc whoami --show-server) is not an OpenShift cluster"
+  [[ "$(oc auth can-i '*' '*' --all-namespaces 2>/dev/null)" == yes ]] || die "$(oc whoami) is not cluster-admin"
 }

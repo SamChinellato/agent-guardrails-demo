@@ -1,0 +1,26 @@
+# Demo namespaces on OpenShift (OS-12), created by `make up TARGET=openshift` as
+# cluster-admin. managed-by lets the cluster-wide openshift-gitops instance deploy into
+# them (OS-11). k3d keeps deploy/manifests/00-namespaces.yaml (gateway, ai, observability).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aigw-gateway
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo, argocd.argoproj.io/managed-by: openshift-gitops}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo, argocd.argoproj.io/managed-by: openshift-gitops}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aigw-observability
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo, argocd.argoproj.io/managed-by: openshift-gitops}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aigw-build
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo, argocd.argoproj.io/managed-by: openshift-gitops}

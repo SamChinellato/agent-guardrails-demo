@@ -1,0 +1,143 @@
+# OLM operators for the OpenShift target (OS-01, OS-08). Installed by
+# scripts/openshift/install-operators.sh as cluster-admin before Argo CD takes over, so the
+# shared openshift-gitops instance needs no cluster-wide grants for them (OS-11).
+# ${..._CHANNEL} / ${..._CSV} come from versions.env. installPlanApproval is Manual: the
+# script approves only the install plan for the pinned CSV, so nothing upgrades on its own.
+#
+# Each Red Hat operator gets the namespace its documentation uses, with an AllNamespaces
+# OperatorGroup. Grafana's (community) is scoped to aigw-observability only.
+# ------------------------------------------------------------------ OpenShift GitOps
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-gitops-operator
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: openshift-gitops-operator, namespace: openshift-gitops-operator}
+spec: {upgradeStrategy: Default}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: openshift-gitops-operator, namespace: openshift-gitops-operator}
+spec:
+  name: openshift-gitops-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${GITOPS_OPERATOR_CHANNEL}
+  startingCSV: ${GITOPS_OPERATOR_CSV}
+  installPlanApproval: Manual
+# ------------------------------------------------------------------ Cluster Observability
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-cluster-observability-operator
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: cluster-observability-operator, namespace: openshift-cluster-observability-operator}
+spec: {upgradeStrategy: Default}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: cluster-observability-operator, namespace: openshift-cluster-observability-operator}
+spec:
+  name: cluster-observability-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${COO_CHANNEL}
+  startingCSV: ${COO_CSV}
+  installPlanApproval: Manual
+# ------------------------------------------------------------------ Loki
+# Not labelled openshift.io/cluster-monitoring: nothing is registered with platform monitoring.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-operators-redhat
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: openshift-operators-redhat, namespace: openshift-operators-redhat}
+spec: {upgradeStrategy: Default}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: loki-operator, namespace: openshift-operators-redhat}
+spec:
+  name: loki-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${LOKI_OPERATOR_CHANNEL}
+  startingCSV: ${LOKI_OPERATOR_CSV}
+  installPlanApproval: Manual
+# ------------------------------------------------------------------ Tempo
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-tempo-operator
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: openshift-tempo-operator, namespace: openshift-tempo-operator}
+spec: {upgradeStrategy: Default}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: tempo-product, namespace: openshift-tempo-operator}
+spec:
+  name: tempo-product
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${TEMPO_OPERATOR_CHANNEL}
+  startingCSV: ${TEMPO_OPERATOR_CSV}
+  installPlanApproval: Manual
+# ------------------------------------------------------------------ OpenTelemetry
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-opentelemetry-operator
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: openshift-opentelemetry-operator, namespace: openshift-opentelemetry-operator}
+spec: {upgradeStrategy: Default}
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: opentelemetry-product, namespace: openshift-opentelemetry-operator}
+spec:
+  name: opentelemetry-product
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${OTEL_OPERATOR_CHANNEL}
+  startingCSV: ${OTEL_OPERATOR_CSV}
+  installPlanApproval: Manual
+# ------------------------------------------------------------------ Grafana (community)
+# Watches only aigw-observability (created by deploy/openshift/namespaces.yaml first).
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata: {name: aigw-observability, namespace: aigw-observability}
+spec:
+  targetNamespaces: [aigw-observability]
+  upgradeStrategy: Default
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata: {name: grafana-operator, namespace: aigw-observability}
+spec:
+  name: grafana-operator
+  source: community-operators
+  sourceNamespace: openshift-marketplace
+  channel: ${GRAFANA_OPERATOR_CHANNEL}
+  startingCSV: ${GRAFANA_OPERATOR_CSV}
+  installPlanApproval: Manual
