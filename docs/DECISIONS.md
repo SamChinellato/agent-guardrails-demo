@@ -639,3 +639,12 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 - k3d doesn't use it.
 
 **Argo CD scope (OS-11).** `scripts/openshift/gitops.sh` creates a project `aigw` that allows only this repository, only the `aigw-*` namespaces and no cluster-scoped objects, and the Application `aigw-workloads` in it. The repository is read with a read-only deploy key generated into `.secrets/argocd-deploy-key`; its public half is added on GitHub by hand.
+
+## D-055: On OpenShift, the gateway bootstrap is an Argo CD PostSync Job running the k3d code
+
+**Change (OS-10).** `bootstrap-gateway.sh`'s apply and drift check moved, unchanged, into `scripts/gateway-apply.sh`. It reads its inputs from the environment (Admin API URL and key, consumer keys, `LLM_MODE`, the live LLM's template variables, the `gateway/` directory) and needs only bash, curl and jq. On k3d, `bootstrap-gateway.sh` is now a wrapper that opens the Admin API port-forward (GW-07, rule 6) and calls it; output and behaviour are unchanged (verified: 0 objects changed).
+
+**On OpenShift.** The Job `gateway-bootstrap` in `aigw-gateway` is a PostSync hook of `aigw-workloads`, so it runs after every sync. It waits for the Admin API (APISIX is its own Application, `aigw-apisix`) and then runs the same script. A failed apply or a drift fails the sync, which Argo CD shows. Kill-switch state is preserved as on k3d.
+- **Image.** No pinned image had both curl and jq, so `gateway-bootstrap` is built in `aigw-build` from `deploy/openshift/bootstrap/Dockerfile`: the pinned Python base plus `curl` and `jq` at the Debian versions pinned in `versions.env` (`BOOTSTRAP_CURL_VERSION`, `BOOTSTRAP_JQ_VERSION`). Chosen by the operator over a Python rewrite or keeping the bootstrap in `make`. A Job can't carry an image trigger, so it pulls `:latest` on each run.
+- **Inputs.** `gateway/` comes from one ConfigMap per kind (`gateway-routes`, ...), generated in the root kustomization (D-054) and mounted at `/gateway/<kind>`; keys from the `apisix-admin` and `consumer-keys` Secrets; the live LLM is llama.cpp in `aigw-ai` (D-052).
+- **Not yet:** the NetworkPolicy that admits only this Job and the kill switch to the Admin API (workstream 2), and `LLM_MODE=live` (workstream 5; the Job sets `mock`).
