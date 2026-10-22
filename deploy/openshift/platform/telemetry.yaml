@@ -126,3 +126,13 @@ kind: ClusterRoleBinding
 metadata: {name: aigw-tempo-reader}
 roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-reader}
 subjects: [{kind: ServiceAccount, name: tempo-reader, namespace: aigw-observability}]
+---
+# Tempo's admission webhook lets an identity enable openshift tenancy only if it may create
+# tokenreviews itself (the gateway needs them). Argo CD's controller applies TempoMonolithic,
+# so it gets the built-in auth-delegator role: create tokenreviews and subjectaccessreviews,
+# which check credentials and grant nothing (OS-11, D-058).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-argocd-auth-delegator}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: system:auth-delegator}
+subjects: [{kind: ServiceAccount, name: openshift-gitops-argocd-application-controller, namespace: openshift-gitops}]
