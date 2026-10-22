@@ -3,22 +3,35 @@
 The gateway and the models are named by capability (D-045); the platform pieces (Kubernetes,
 Prometheus, Loki, Tempo, Grafana) by name (D-048). Bold blue: requests, all through the
 gateway. Red: control (kill switch). Dashed grey: telemetry.
+
+TARGET=k3d (default) draws the laptop demo: k3d, the LLM on the host. TARGET=openshift draws
+the same demo on OpenShift (D-062): the router and OpenShift login in front, llama.cpp in the
+cluster, the operator-managed telemetry, and Argo CD deploying it all from git. The agents,
+gateway, guard, tools and every arrow between them are the same in both.
 """
+
+import os
 
 from diagrams import Cluster, Diagram, Edge
 from diagrams.generic.compute import Rack
 from diagrams.generic.network import Firewall, Router
 from diagrams.generic.storage import Storage
+from diagrams.onprem.auth import Oauth2Proxy
 from diagrams.onprem.client import Client, User
 from diagrams.onprem.compute import Server
+from diagrams.onprem.gitops import Argocd
 from diagrams.onprem.logging import Loki
 from diagrams.onprem.monitoring import Grafana, Prometheus
+from diagrams.onprem.network import Haproxy
 from diagrams.onprem.tracing import Tempo
 from diagrams.programming.flowchart import Decision, Document, MultipleDocuments, PredefinedProcess
+
+OPENSHIFT = os.environ.get("TARGET", "k3d") == "openshift"
 
 REQUEST = dict(color="#2f5aa8", penwidth="2.6", fontcolor="#2f5aa8")
 CONTROL = dict(color="#c8322f", penwidth="2", fontcolor="#c8322f")
 TELEMETRY = dict(color="#8e8c84", style="dashed", fontcolor="#6b7484")
+DEPLOY = dict(color="#8e8c84", style="dotted", fontcolor="#6b7484")
 
 graph = {"fontname": "Helvetica", "fontsize": "24", "pad": "0.5", "nodesep": "0.6", "ranksep": "1.1",
          "splines": "spline", "newrank": "true", "labeljust": "l"}
@@ -26,16 +39,28 @@ node = {"fontname": "Helvetica", "fontsize": "13"}
 edge = {"fontname": "Helvetica", "fontsize": "12"}
 host = {"bgcolor": "#f6f7f9", "fontsize": "16"}
 k8s = {"bgcolor": "#eaf0fb", "fontsize": "16", "pencolor": "#326ce5"}
+ocp = {"bgcolor": "#fbecec", "fontsize": "16", "pencolor": "#ee0000"}   # OpenShift red
 
-with Diagram("", filename="/out/architecture", show=False,
+with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/architecture", show=False,
              direction="LR", outformat="png", graph_attr=graph, node_attr=node, edge_attr=edge):
     analyst = User("Procurement analyst\n(you)")
 
-    with Cluster("This machine", graph_attr=host):
-        llm = Rack("LLM API\nlocal language model\n(runs on the host)")
+    if OPENSHIFT:
+        outer = Cluster("OpenShift cluster", graph_attr=ocp)
+    else:
+        outer = Cluster("This machine", graph_attr=host)
+    with outer:
+        if OPENSHIFT:
+            router = Haproxy("OpenShift router\nHTTPS routes")
+            login = Oauth2Proxy("OpenShift login\nconsole · Grafana · kill switch")
+            argocd = Argocd("Argo CD\n(OpenShift GitOps)\ndeploys everything from git")
+        else:
+            llm = Rack("LLM API\nlocal language model\n(runs on the host)")
 
-        with Cluster("Kubernetes cluster", graph_attr=k8s):
+        with Cluster("Demo namespaces (aigw-*)" if OPENSHIFT else "Kubernetes cluster", graph_attr=k8s):
             console = Client("Chat console")
+            if OPENSHIFT:
+                llm = Rack("LLM API\nllama.cpp · Granite 4.0 Micro\n4-bit, on CPU, in the cluster")
 
             with Cluster("AI gateway: every call passes here"):
                 gateway = Router("Gateway\nidentity · prompt filters\nLLM proxy · tool routing")
@@ -52,14 +77,21 @@ with Diagram("", filename="/out/architecture", show=False,
                 docs = MultipleDocuments("MCP tool\nsupplier documents")
                 actions = Document("MCP tool\nrecords, email, export")
 
-            with Cluster("Observability"):
-                collector = Storage("Telemetry collector")
+            with Cluster("Observability (OpenShift operators)" if OPENSHIFT else "Observability"):
+                collector = Storage("Telemetry collector\n(OpenTelemetry)" if OPENSHIFT else "Telemetry collector")
                 tempo = Tempo("Tempo\ntraces")
-                loki = Loki("Loki\nlogs · decision records")
+                loki = Loki("LokiStack\nlogs · decision records" if OPENSHIFT else "Loki\nlogs · decision records")
                 prometheus = Prometheus("Prometheus\nmetrics · alerts")
                 grafana = Grafana("Grafana\ndashboards · decision trail")
 
-    analyst >> Edge(label="chat", **REQUEST) >> console >> Edge(label="as demo-user", **REQUEST) >> gateway
+    if OPENSHIFT:
+        analyst >> Edge(label="HTTPS", **REQUEST) >> router >> Edge(**REQUEST) >> login
+        login >> Edge(label="chat", **REQUEST) >> console
+        login >> Edge(label="dashboards", **TELEMETRY) >> grafana
+        argocd >> Edge(label="syncs from git", **DEPLOY) >> gateway
+    else:
+        analyst >> Edge(label="chat", **REQUEST) >> console
+    console >> Edge(label="as demo-user", **REQUEST) >> gateway
     gateway >> Edge(label="every call checked", **REQUEST) >> guard
     guard >> Edge(label="text from people and tools", style="bold", color="#2f5aa8") >> classifier
     gateway >> Edge(label="model calls", **REQUEST) >> llm

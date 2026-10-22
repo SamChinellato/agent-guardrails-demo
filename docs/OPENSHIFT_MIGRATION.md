@@ -4,6 +4,10 @@
 
 ## Goal
 
+![The demo on OpenShift](architecture-openshift.png)
+
+*`make diagram` (D-062); the k3d version is `architecture.png`.*
+
 Run the demo on the TechZone OpenShift cluster instead of a local k3d cluster, keeping what the demo shows (attacks, observability, kill switch, evidence) and the operator interface (`make up`, `make demo`, `make test`, ...).
 
 Constraint: the telemetry stack (metrics, alerts, traces, logs, dashboards) must be **self-contained**. We have cluster-admin, but **user workload monitoring cannot be enabled** (the platform `cluster-monitoring-config` is managed from an ACM hub).

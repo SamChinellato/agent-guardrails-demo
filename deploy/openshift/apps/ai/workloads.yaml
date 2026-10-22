@@ -138,6 +138,7 @@ spec:
             - {name: PROMETHEUS_URL, value: "http://aigw-prometheus.aigw-observability.svc.cluster.local:9090"}
             # "Decision details" opens aigw-grafana.<the console's domain> (OS-04)
             - {name: GRAFANA_SUBDOMAIN, value: aigw-grafana}
+            - {name: ARCHITECTURE_IMAGE, value: architecture-openshift.png}   # "How it works" (D-062)
             # "Where it went" reads tenant "demo" through the Tempo gateway with the pod's own
             # token (ClusterRoleBinding aigw-console-tempo-reader, platform/telemetry.yaml) and
             # checks its certificate against the service CA OpenShift mounts beside the token

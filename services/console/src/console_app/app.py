@@ -23,6 +23,9 @@ KEY = os.environ.get("DEMO_USER_KEY", "")
 GRAFANA_PORT = os.environ.get("GRAFANA_PORT", "3000")
 # OpenShift (OS-04): Grafana has its own Route host, <subdomain>.<the console's domain>
 GRAFANA_SUBDOMAIN = os.environ.get("GRAFANA_SUBDOMAIN", "")
+# The "How it works" diagram for this target: architecture.png (k3d) or
+# architecture-openshift.png (D-062); both are rendered by make diagram
+ARCHITECTURE = Path(os.environ.get("ARCHITECTURE_IMAGE", "architecture.png")).name
 ROGUE_SCENARIO = os.environ.get("ROGUE_SCENARIO", "s6-rogue:scripted")
 ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "120"))
 PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
@@ -35,7 +38,7 @@ async def architecture():
     """The architecture diagram (make diagram), shown from the console header."""
     from fastapi.responses import FileResponse
 
-    return FileResponse(Path(__file__).parent / "static" / "architecture.png", media_type="image/png")
+    return FileResponse(Path(__file__).parent / "static" / ARCHITECTURE, media_type="image/png")
 
 
 @app.get("/samples/{name}", include_in_schema=False)

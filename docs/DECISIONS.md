@@ -730,3 +730,14 @@ The demo script's beats were run through the console API on OpenShift on 2026-10
   - Beat 4: export denied; the executor was tripped by the guard, verified in 180 ms on OpenShift (about 17 ms on k3d). The decision trail's three panels returned the expected rows and spans.
   - Beat 5: the researcher was suspended by the alert after 81 tool calls, verified in 74 ms. Agent Behaviour's panels returned data.
   - The `make` extras (`make demo SCENARIO=…`, `make evidence`, `make admin-ui`) still ignore `TARGET` and act on k3d: that is workstream 6.
+
+## D-062: An OpenShift variant of the architecture diagram
+
+`make diagram` renders two images from the same `docs/diagram/architecture.py`: `docs/architecture.png` (k3d, unchanged) and `docs/architecture-openshift.png` (`TARGET=openshift`). The agents, gateway, guard, tools and every request, control and telemetry arrow are drawn by the same code, so the two can't drift apart. The OpenShift variant differs only in its platform:
+
+- the OpenShift router and login in front of the console, Grafana and the kill switch
+- llama.cpp inside the cluster instead of the LLM on the host
+- the telemetry stack labelled as operator-managed (LokiStack, OpenTelemetry collector)
+- Argo CD (OpenShift GitOps) deploying everything from git
+
+The console serves the image named by `ARCHITECTURE_IMAGE` at `/console/architecture.png`, the opening slide and its **How it works** link. The OpenShift overlay sets it to `architecture-openshift.png`; k3d keeps the default.
