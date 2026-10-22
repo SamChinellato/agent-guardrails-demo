@@ -26,6 +26,11 @@ spec:
     auth: {disable_login_form: "false"}
     auth.anonymous: {enabled: "true", org_role: Viewer}
     users: {default_theme: dark}
+    # Keep the plugins bundled with the pinned image. Grafana's background installer would
+    # otherwise replace prometheus, loki and tempo with downloads from grafana.com, stop the
+    # bundled ones, fail on the operator's read-only plugin directory, and leave them
+    # unregistered ("Plugin not registered"). No unpinned downloads at runtime either (REP-02).
+    plugins: {preinstall_disabled: "true"}
   deployment:
     spec:
       template:
