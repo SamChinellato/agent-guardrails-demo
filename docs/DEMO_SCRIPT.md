@@ -12,14 +12,16 @@
 
 ## Before you start
 
-| Screen | Address | Use |
-| --- | --- | --- |
-| Console | `http://<host>:8080/console` | The audience watches this |
-| Architecture | `http://<host>:8080/console/architecture.png` | Opening slide (also the **How it works** link in the console) |
-| Grafana | `http://<host>:3001` | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
-| Kill switch | `http://<host>:8090` | Token: `cat .secrets/killswitch-operator-token` |
-| Prometheus | `http://<host>:9090/alerts` | Optional for beat 5: watch the alert go pending, then firing |
-| Evidence | `http://<host>:8099` | Reports from `make evidence` |
+| Screen | k3d | OpenShift (`<domain>`: the cluster's apps domain) | Use |
+| --- | --- | --- | --- |
+| Console | `http://<host>:8080/console` | `https://aigw-console.<domain>/console` (OpenShift login) | The audience watches this |
+| Architecture | `http://<host>:8080/console/architecture.png` | `https://aigw-console.<domain>/console/architecture.png` | Opening slide (also the **How it works** link in the console) |
+| Grafana | `http://<host>:3001` | `https://aigw-grafana.<domain>` (OpenShift login) | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
+| Kill switch | `http://<host>:8090` | `https://aigw-killswitch.<domain>` (OpenShift login) | Token: `cat .secrets/killswitch-operator-token` |
+| Prometheus | `http://<host>:9090/alerts` | not exposed; `oc -n aigw-observability port-forward svc/aigw-prometheus 9090` | Optional for beat 5: watch the alert go pending, then firing |
+| Evidence | `http://<host>:8099` | not yet on OpenShift (workstream 6) | Reports from `make evidence` |
+
+On OpenShift the live model is llama.cpp in the cluster (a fresh install starts in live mode; `make llm-mode MODE=mock|live TARGET=openshift` switches). The `make` commands below (`make demo`, `make evidence`, `make admin-ui`) still work against k3d only; on OpenShift use the console and the kill-switch panel.
 
 Press **New chat** in the console before you start, and turn on **Monitoring** if you want the audience to see where each message goes. Messages in *italics* are story prompts: the console plays a scripted run for them, so they behave the same every time. Other messages go to the live model, about 20–30 s per answer.
 

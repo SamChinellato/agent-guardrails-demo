@@ -714,3 +714,18 @@ Presenter's choices (2026-10-22): switch at runtime, llama.cpp always on, fresh 
   - Argo stayed Synced and Healthy after each switch.
   - A pod labelled `gguf-fetch` reached huggingface.co; one without the label was blocked.
   - `verify-netpol.sh` passes all 17 flows, including the guard's new API server flow (D-059).
+
+## D-061: Demo script on OpenShift: trace context, console namespace, console memory
+
+The demo script's beats were run through the console API on OpenShift on 2026-10-22. Three fixes came out of it, and all three apply to k3d as well.
+
+- **Our services send `traceparent` with the sampled flag only.** OpenTelemetry Python 1.45 also sets the W3C level-2 "random trace ID" flag, so it sends `…-03`. APISIX's bundled opentelemetry-lua rejects any flags above `02` (`parse_trace_parent`) and starts a new trace. As a result, a request the gateway rejects itself (`ai-prompt-guard`'s pattern block) was missing from the caller's trace, and its decision trail showed no gateway span. `demo_common` now injects with `SampledOnlyTraceContext`, which keeps the trace and span IDs and drops the extra flag bits on the wire only. Allowed requests were already linked, and the reason is not fully understood. A test with explicit headers showed that flags `01` keep the trace and flags `03` start a new one, whether the request is blocked or allowed.
+- **The console patches `guard-policy` in its own namespace.** The path was hard-coded to `namespaces/ai`, so on OpenShift "New chat" and every story prompt (Meridian, Coastal, the rogue agent) failed with 403. The namespace now comes from the service-account mount.
+- **Console memory limit 512Mi (was 192Mi).** "Where it went" for the rogue agent parses a trace of about 4,000 spans (about 9 MB of JSON), and the console was OOMKilled. With the new limit it peaked around 50Mi after the parse and didn't restart.
+- **Results.**
+  - Beat 1 was a live answer in 15 s.
+  - Beat 2 was blocked at 1.000 against 0.9.
+  - Beats 3 and 3b were withheld.
+  - Beat 4: export denied; the executor was tripped by the guard, verified in 180 ms on OpenShift (about 17 ms on k3d). The decision trail's three panels returned the expected rows and spans.
+  - Beat 5: the researcher was suspended by the alert after 81 tool calls, verified in 74 ms. Agent Behaviour's panels returned data.
+  - The `make` extras (`make demo SCENARIO=…`, `make evidence`, `make admin-ui`) still ignore `TARGET` and act on k3d: that is workstream 6.
