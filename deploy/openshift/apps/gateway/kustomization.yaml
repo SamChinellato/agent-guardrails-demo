@@ -6,5 +6,6 @@ namespace: aigw-gateway
 resources:
   - ../../../base/gateway
   - bootstrap-job.yaml
+  - exposure.yaml
 patches:
   - path: workloads.yaml

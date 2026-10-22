@@ -1,0 +1,191 @@
+# Exposure on OpenShift (OS-04): edge-TLS Routes. Hosts come from `subdomain` plus the
+# cluster's ingress domain, so nothing cluster-specific is in git.
+# - aigw-gateway.<domain>: the gateway API for the CLI and tests, consumer keys (key-auth)
+#   as today. Only the key-protected prefixes are routed; /console is not, so the console
+#   is reachable only through its OAuth proxy.
+# - aigw-console.<domain>: OAuth proxy -> APISIX (open https://aigw-console.<domain>/console)
+# - aigw-killswitch.<domain>: OAuth proxy -> the kill-switch panel (then its operator token)
+# The proxies admit users who may `get` Services in aigw-gateway (cluster-admins, invited
+# presenters), not other tenants. Their cookie secret is created by gen-secrets.sh.
+# --------------------------------------------------------------------------- gateway API
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: gateway-llm, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-gateway
+  path: /llm
+  to: {kind: Service, name: apisix-gateway}
+  port: {targetPort: apisix-gateway}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: gateway-mcp, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-gateway
+  path: /mcp
+  to: {kind: Service, name: apisix-gateway}
+  port: {targetPort: apisix-gateway}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: gateway-agents, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-gateway
+  path: /agents
+  to: {kind: Service, name: apisix-gateway}
+  port: {targetPort: apisix-gateway}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: gateway-demo, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-gateway
+  path: /demo
+  to: {kind: Service, name: apisix-gateway}
+  port: {targetPort: apisix-gateway}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+# --------------------------------------------------------------------------- console
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: console-oauth
+  namespace: aigw-gateway
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.console: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"console"}}'
+---
+apiVersion: v1
+kind: Service
+metadata: {name: console-oauth, namespace: aigw-gateway, labels: {app: console-oauth}}
+spec:
+  selector: {app: console-oauth}
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: console, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-console
+  to: {kind: Service, name: console-oauth}
+  port: {targetPort: http}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: console-oauth
+  namespace: aigw-gateway
+  labels: {app: console-oauth}
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"oauth-proxy:v4.4","namespace":"openshift"},"fieldPath":"spec.template.spec.containers[?(@.name==\"oauth-proxy\")].image"}]'
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: console-oauth}}
+  template:
+    metadata: {labels: {app: console-oauth}}
+    spec:
+      serviceAccountName: console-oauth   # its token is the OAuth client secret
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: oauth-proxy
+          # The cluster's own oauth-proxy (openshift/oauth-proxy:v4.4, versioned with the
+          # cluster release); the trigger swaps in its digest
+          image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+          args:
+            - --provider=openshift
+            - --http-address=:8080
+            - --https-address=
+            - --upstream=http://apisix-gateway.aigw-gateway.svc.cluster.local:80
+            - --openshift-service-account=console-oauth
+            - --cookie-secret-file=/etc/oauth/cookie-secret
+            - --cookie-secure=true
+            - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /oauth/healthz, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+      volumes:
+        - name: cookie
+          secret: {secretName: oauth-proxy-cookie}
+# --------------------------------------------------------------------------- kill-switch panel
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: killswitch-oauth
+  namespace: aigw-gateway
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.killswitch: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"killswitch"}}'
+---
+apiVersion: v1
+kind: Service
+metadata: {name: killswitch-oauth, namespace: aigw-gateway, labels: {app: killswitch-oauth}}
+spec:
+  selector: {app: killswitch-oauth}
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: killswitch, namespace: aigw-gateway}
+spec:
+  subdomain: aigw-killswitch
+  to: {kind: Service, name: killswitch-oauth}
+  port: {targetPort: http}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: killswitch-oauth
+  namespace: aigw-gateway
+  labels: {app: killswitch-oauth}
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"oauth-proxy:v4.4","namespace":"openshift"},"fieldPath":"spec.template.spec.containers[?(@.name==\"oauth-proxy\")].image"}]'
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: killswitch-oauth}}
+  template:
+    metadata: {labels: {app: killswitch-oauth}}
+    spec:
+      serviceAccountName: killswitch-oauth
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: oauth-proxy
+          image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+          args:
+            - --provider=openshift
+            - --http-address=:8080
+            - --https-address=
+            - --upstream=http://killswitch-panel.aigw-gateway.svc.cluster.local:8000
+            - --openshift-service-account=killswitch-oauth
+            - --cookie-secret-file=/etc/oauth/cookie-secret
+            - --cookie-secure=true
+            - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /oauth/healthz, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+      volumes:
+        - name: cookie
+          secret: {secretName: oauth-proxy-cookie}

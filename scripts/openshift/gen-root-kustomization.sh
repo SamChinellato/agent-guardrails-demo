@@ -23,6 +23,7 @@ kind: Kustomization
 resources:
   - deploy/openshift/apps/ai
   - deploy/openshift/apps/gateway
+  - deploy/openshift/apps/networkpolicies.yaml
 generatorOptions:
   disableNameSuffixHash: true   # the workloads mount these by name, as on k3d
 configMapGenerator:

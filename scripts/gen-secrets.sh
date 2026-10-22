@@ -24,6 +24,7 @@ secret apisix-viewer-key 24 >/dev/null
 for c in demo-user researcher executor probe; do secret "consumer-$c" 24 >/dev/null; done
 for t in operator guard alertmanager; do secret "killswitch-$t-token" 24 >/dev/null; done
 secret grafana-admin-password 16 >/dev/null
+secret oauth-proxy-cookie 16 >/dev/null   # OpenShift OAuth proxies (OS-04): 32 characters
 
 # apply_secret NAMESPACE NAME KEY=FILE...: create-or-update without printing values
 apply_secret() {
@@ -49,3 +50,6 @@ apply_secret "$NS_AI" agent-keys researcher=consumer-researcher executor=consume
 kubectl -n "$NS_OBS" create secret generic grafana-admin \
   --from-literal=admin-user=admin --from-file=admin-password="$DIR/grafana-admin-password" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+if [[ "$TARGET" == openshift ]]; then
+  apply_secret "$NS_GATEWAY" oauth-proxy-cookie cookie-secret=oauth-proxy-cookie
+fi

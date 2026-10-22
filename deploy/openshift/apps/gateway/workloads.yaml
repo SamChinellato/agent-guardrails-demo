@@ -48,3 +48,14 @@ spec:
             - {name: APISIX_ADMIN_URL, value: "http://apisix-admin.aigw-gateway.svc.cluster.local:9180"}
             - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+---
+# The panel is reached through its OAuth proxy and Route (OS-04), not a NodePort on every node
+apiVersion: v1
+kind: Service
+metadata:
+  name: killswitch-panel
+  namespace: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - {name: http, port: 8000, targetPort: 8000, nodePort: null}
