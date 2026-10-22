@@ -27,7 +27,8 @@ spec:
     repoURL: "${GITOPS_REPO}"
     targetRevision: "${GITOPS_REVISION}"
     path: .
-  destination: {server: https://kubernetes.default.svc}
+  # Every object names its namespace; this default only has to satisfy the project
+  destination: {server: https://kubernetes.default.svc, namespace: aigw-ai}
   syncPolicy:
     automated: {prune: true, selfHeal: true}
     syncOptions: [RespectIgnoreDifferences=true]
