@@ -238,6 +238,7 @@ spec:
       ports: [{port: 9090, protocol: TCP}]
     - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: aigw-observability}}, podSelector: {matchLabels: {app.kubernetes.io/name: tempo-monolithic}}}]
       ports: [{port: 8080, protocol: TCP}]
+---
 # --------------------------------------------------------------------------- aigw-observability
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
