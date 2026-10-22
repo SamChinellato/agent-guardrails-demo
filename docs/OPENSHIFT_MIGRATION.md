@@ -54,8 +54,8 @@ Three options were considered: (A) COO for metrics with the Helm charts for the 
 
 | Signal | Today | OpenShift | Notes |
 |---|---|---|---|
-| Metrics + alerts | kps Prometheus + Alertmanager | **Cluster Observability Operator** `MonitoringStack` in `observability` | Own operator and own API group `monitoring.rhobs`, so it never touches the platform's `monitoring.coreos.com` CRDs or needs UWM. Our `ServiceMonitor`s and `PrometheusRule` move to `monitoring.rhobs/v1`. The APISIX and collector charts' own ServiceMonitors (`monitoring.coreos.com`) are switched off and replaced by ours. |
-| Alert routing (F6) | kps `alertmanager.config` | `MonitoringStack` with its Alertmanager configured from our own `alertmanager-<stack>` Secret (route + killswitch webhook with bearer token file), or an `AlertmanagerConfig` (`monitoring.rhobs/v1alpha1`) | Spike: confirm COO lets us supply the full config and mount the token Secret. |
+| Metrics + alerts | kps Prometheus + Alertmanager | **Cluster Observability Operator** `MonitoringStack` `aigw` in `aigw-observability` (services `aigw-prometheus`, `aigw-alertmanager`); **verified** | Own operator and own API group `monitoring.rhobs`, so it never touches the platform's `monitoring.coreos.com` CRDs or needs UWM. Our `ServiceMonitor`s and `PrometheusRule` move to `monitoring.rhobs/v1`. The APISIX and collector charts' own ServiceMonitors (`monitoring.coreos.com`) are switched off and replaced by ours. |
+| Alert routing (F6) | kps `alertmanager.config` | An `AlertmanagerConfig` (`monitoring.rhobs/v1alpha1`) in `aigw-observability`: route on `killswitch_scope`, webhook with the bearer token from Secret `killswitch-alertmanager` | **Verified.** A test alert fired at 5 s evaluation and was delivered to `/v1/alertmanager` with the bearer token. `matcherStrategy: OnNamespaceExceptForAlertmanagerNamespace`, because our alerts carry no namespace label. |
 | Traces | Tempo Helm chart | **Tempo Operator** `TempoMonolithic` (Tempo 2.10), multi-tenant in `openshift` mode with one tenant `demo`, PVC on RBD (**OS-15**) | **Verified.** Single-tenant is unsupported on OpenShift (the operator warns). The collector writes through the gateway with its token; readers (SA `tempo-reader`) query `https://tempo-tempo-gateway:8080/api/traces/v1/demo/tempo/api/...`. Fetch by ID and TraceQL search both work. The console's trace reader (D-046), Grafana and the evidence CLI need a bearer token and the new URL. |
 | Logs | Loki single binary on RBD | **Loki Operator** `LokiStack` size `1x.demo`, `openshift-logging` tenancy, object storage on a NooBaa `ObjectBucketClaim` | **Verified (trial 1).** The Red Hat build always deploys the token-checking gateway. The collector (SA `otel-collector`) writes OTLP to the `application` tenant. Grafana and the evidence CLI read as SA `loki-reader`: a cluster-scope `get` on the tenant plus `get` on only the demo namespaces, so queries are limited to them (another namespace is refused). `service_name` stays a stream label and record attributes are structured metadata, so today's queries work unchanged. Every record must also carry `kubernetes.namespace_name`, which the gateway filters on; the collector adds it. Retention 1 d. |
 | Collector | OTel Collector Helm chart | **Red Hat build of OpenTelemetry** `OpenTelemetryCollector` (deployment mode), service `otel-collector` | **Verified.** Same pipelines, plus `k8s_attributes` (namespace, pod, deployment) and a transform adding `kubernetes.namespace_name`. Exports to both gateways with `bearertokenauth` and the service CA. Prometheus exporter on :8889 scraped by our `monitoring.rhobs` ServiceMonitor. |
@@ -168,12 +168,19 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 - **Demo timings.** 5 s scrape/evaluation and the 10 s reload bound must still hold.
 - **TechZone lifetime.** The reservation expires; the plan should rebuild from scratch on a fresh cluster with one command.
 
+## Gotchas found on the cluster
+
+- **Always name `monitoring.rhobs` kinds in full.** `oc get/delete prometheusrule` resolves to the platform's `monitoring.coreos.com` type, so a short name silently acts on the wrong API. Scripts use `prometheusrules.monitoring.rhobs`, `servicemonitors.monitoring.rhobs`, and so on.
+- **Collector ServiceMonitors must exclude the headless Service**, or every metric is scraped twice.
+- **`wait_for` hides its command's output** (`scripts/lib.sh`), so log after it, not inside it.
+- **Set `TARGET` before sourcing `lib.sh`.** It picks the kubeconfig when sourced; setting it afterwards still targets k3d.
+
 ## Spikes before implementation
 
 Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted afterwards:
 
 1. **Done.** **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
-2. **Next.** **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
+2. **Done.** **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
 3. **Done.** **APISIX logs:** `loki-logger` to the LokiStack gateway with a write-only token (the Red Hat collector has no Loki receiver).
 4. **vLLM CPU:** dtype on AVX-512 without BF16, tokens per second, Granite tool calling through the gateway's `ai-proxy`.
 5. **Done.** **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.

@@ -1,0 +1,77 @@
+# Metrics and alerts (OS-01): a Cluster Observability Operator MonitoringStack. API group
+# monitoring.rhobs, so it never touches the platform's monitoring.coreos.com CRDs and
+# needs no user workload monitoring. It selects ServiceMonitors, PodMonitors and
+# PrometheusRules labelled app.kubernetes.io/part-of=ai-gateway-demo, in the namespaces
+# carrying the same label. Prometheus: aigw-prometheus:9090; Alertmanager:
+# aigw-alertmanager:9093 (both reached by port-forward, OS-04).
+apiVersion: monitoring.rhobs/v1alpha1
+kind: MonitoringStack
+metadata:
+  name: aigw
+  namespace: aigw-observability
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  logLevel: info
+  retention: 24h                        # OBS-07
+  resourceSelector:
+    matchLabels: {app.kubernetes.io/part-of: ai-gateway-demo}
+  namespaceSelector:
+    matchLabels: {app.kubernetes.io/part-of: ai-gateway-demo}
+  prometheusConfig:
+    replicas: 1
+    scrapeInterval: 5s                  # KS-10 demo timings; rule groups set interval: 5s
+    persistentVolumeClaim:
+      storageClassName: ocs-storagecluster-ceph-rbd
+      resources: {requests: {storage: 5Gi}}
+  alertmanagerConfig:
+    replicas: 1
+    # The killswitch route below lives in Alertmanager's own namespace and must match every
+    # alert: our alerts carry no namespace label.
+    matcherStrategy: {type: OnNamespaceExceptForAlertmanagerNamespace}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+---
+# Alerts with a killswitch_scope label go to the killswitch (F6, KS-10); others notify only.
+# Same timings as k3d (D-037). The bearer token Secret is created by gen-secrets.sh (OS-09).
+apiVersion: monitoring.rhobs/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: killswitch
+  namespace: aigw-observability
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  route:
+    receiver: killswitch
+    matchers:
+      - {name: killswitch_scope, matchType: "=~", value: ".+"}
+    groupBy: [alertname, killswitch_scope]
+    groupWait: 5s
+    groupInterval: 10s
+    repeatInterval: 1m
+  receivers:
+    - name: killswitch
+      webhookConfigs:
+        - url: http://killswitch.aigw-gateway.svc.cluster.local:8000/v1/alertmanager
+          sendResolved: false
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials: {name: killswitch-alertmanager, key: token}
+---
+# The collector's Prometheus exporter (service metrics sent over OTLP) and its own metrics
+apiVersion: monitoring.rhobs/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: aigw-observability
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/instance: aigw-observability.otel}
+    # not the headless Service, which would scrape every metric twice
+    matchExpressions:
+      - {key: operator.opentelemetry.io/collector-service-type, operator: In, values: [base, monitoring]}
+  endpoints:
+    - {port: prometheus, interval: 5s}
+    - {port: monitoring, interval: 15s}
