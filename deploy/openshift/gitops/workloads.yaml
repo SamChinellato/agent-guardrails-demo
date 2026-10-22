@@ -33,12 +33,14 @@ spec:
     automated: {prune: true, selfHeal: true}
     syncOptions: [RespectIgnoreDifferences=true]
   ignoreDifferences:
-    # The image triggers write the current digest into the pod spec (OS-02). Only images
-    # from the cluster registry: pinned ones (e.g. policy-sync) stay tracked from git, and a
-    # new container's image isn't dropped for want of a live value
+    # The image triggers write the current digest into the pod spec (OS-02). Containers
+    # without a trigger (pinned in git: policy-sync) are excluded by name, so their image
+    # stays tracked and a newly added one isn't dropped for want of a live value. The
+    # selector must hold on both the desired and the live object, hence the name, not the
+    # image (a trigger rewrites the image to another registry's digest)
     - group: apps
       kind: Deployment
-      jqPathExpressions: ['.spec.template.spec.containers[] | select(.image | startswith("image-registry.openshift-image-registry.svc:5000/")) | .image']
+      jqPathExpressions: ['.spec.template.spec.containers[] | select(.name != "policy-sync") | .image']
     # Changed at runtime by the console and make policy-set (D-043)
     - kind: ConfigMap
       name: guard-policy
