@@ -1,0 +1,128 @@
+# Telemetry pieces Argo CD doesn't manage (OS-11, OS-09), applied by
+# scripts/openshift/platform.sh as cluster-admin: cluster-scoped RBAC (the aigw project
+# admits no cluster-scoped objects) and the Loki writer's service-account token Secret
+# (Argo CD never manages Secrets). The namespaced rest is in ../telemetry, synced by Argo.
+# from telemetry/collector.yaml
+# k8s_attributes: read pod and namespace metadata
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-otel-collector-k8sattributes}
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+# from telemetry/collector.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-otel-collector-k8sattributes}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-otel-collector-k8sattributes}
+subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
+---
+# from telemetry/loki-rbac.yaml
+# Access to the LokiStack gateway (openshift-logging tenancy). The gateway authorises by
+# SubjectAccessReview on loki.grafana.com/<tenant>: create = write, get = read. The Cluster
+# Logging Operator (which ships equivalent roles) is not installed, so we define our own,
+# limited to the application tenant.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-loki-application-writer}
+rules:
+  - apiGroups: [loki.grafana.com]
+    resources: [application]
+    resourceNames: [logs]
+    verbs: [create]
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-loki-application-reader}
+rules:
+  - apiGroups: [loki.grafana.com]
+    resources: [application]
+    resourceNames: [logs]
+    verbs: [get]
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-namespace-get}
+rules:
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get]
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/service-account-token
+metadata:
+  name: apisix-log-writer-token
+  namespace: aigw-gateway
+  annotations: {kubernetes.io/service-account.name: apisix-log-writer}
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-apisix-loki-writer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-writer}
+subjects: [{kind: ServiceAccount, name: apisix-log-writer, namespace: aigw-gateway}]
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-otel-collector-loki-writer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-writer}
+subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
+# Readers see only the demo namespaces. The gateway needs a cluster-scope "get" on the
+# tenant (bound below), and then, for an identity that isn't a cluster admin, limits every
+# query to the projects that identity can see: here only the demo namespaces (namespace
+# "get" bound per namespace). Verified on the cluster: an explicit query for another
+# namespace is refused, and a query naming no namespace is filtered to the demo ones.
+---
+# from telemetry/loki-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-loki-reader}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-reader}
+subjects: [{kind: ServiceAccount, name: loki-reader, namespace: aigw-observability}]
+---
+# from telemetry/tempo-rbac.yaml
+# Access to the Tempo gateway (OS-15): SubjectAccessReview on tempo.grafana.com/<tenant>
+# with resource name "traces". The collector writes; Grafana, the console and the
+# evidence CLI read (SA tempo-reader). One tenant, "demo", holds only demo traces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-tempo-demo-writer}
+rules:
+  - apiGroups: [tempo.grafana.com]
+    resources: [demo]
+    resourceNames: [traces]
+    verbs: [create]
+---
+# from telemetry/tempo-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: aigw-tempo-demo-reader}
+rules:
+  - apiGroups: [tempo.grafana.com]
+    resources: [demo]
+    resourceNames: [traces]
+    verbs: [get]
+---
+# from telemetry/tempo-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-otel-collector-tempo-writer}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-writer}
+subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
+---
+# from telemetry/tempo-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: aigw-tempo-reader}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-tempo-demo-reader}
+subjects: [{kind: ServiceAccount, name: tempo-reader, namespace: aigw-observability}]

@@ -1,38 +1,8 @@
-# Access to the LokiStack gateway (openshift-logging tenancy). The gateway authorises by
-# SubjectAccessReview on loki.grafana.com/<tenant>: create = write, get = read. The Cluster
-# Logging Operator (which ships equivalent roles) is not installed, so we define our own,
-# limited to the application tenant.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata: {name: aigw-loki-application-writer}
-rules:
-  - apiGroups: [loki.grafana.com]
-    resources: [application]
-    resourceNames: [logs]
-    verbs: [create]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata: {name: aigw-loki-application-reader}
-rules:
-  - apiGroups: [loki.grafana.com]
-    resources: [application]
-    resourceNames: [logs]
-    verbs: [get]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata: {name: aigw-namespace-get}
-rules:
-  - apiGroups: [""]
-    resources: [namespaces]
-    verbs: [get]
----
-# The OTel collector writes; Grafana and the evidence CLI read
-apiVersion: v1
-kind: ServiceAccount
-metadata: {name: otel-collector, namespace: aigw-observability}
----
+# Access to the LokiStack gateway (openshift-logging tenancy), namespaced part; the
+# cluster roles and bindings are in ../platform/telemetry.yaml. The gateway authorises by
+# SubjectAccessReview on loki.grafana.com/<tenant>: create = write, get = read.
+# The OTel collector writes (its ServiceAccount is in collector.yaml); Grafana and the
+# evidence CLI read as loki-reader.
 apiVersion: v1
 kind: ServiceAccount
 metadata: {name: loki-reader, namespace: aigw-observability}
@@ -45,37 +15,8 @@ apiVersion: v1
 kind: ServiceAccount
 metadata: {name: apisix-log-writer, namespace: aigw-gateway}
 ---
-apiVersion: v1
-kind: Secret
-type: kubernetes.io/service-account-token
-metadata:
-  name: apisix-log-writer-token
-  namespace: aigw-gateway
-  annotations: {kubernetes.io/service-account.name: apisix-log-writer}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata: {name: aigw-apisix-loki-writer}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-writer}
-subjects: [{kind: ServiceAccount, name: apisix-log-writer, namespace: aigw-gateway}]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata: {name: aigw-otel-collector-loki-writer}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-writer}
-subjects: [{kind: ServiceAccount, name: otel-collector, namespace: aigw-observability}]
-# Readers see only the demo namespaces. The gateway needs a cluster-scope "get" on the
-# tenant (bound below), and then, for an identity that isn't a cluster admin, limits every
-# query to the projects that identity can see: here only the demo namespaces (namespace
-# "get" bound per namespace). Verified on the cluster: an explicit query for another
-# namespace is refused, and a query naming no namespace is filtered to the demo ones.
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata: {name: aigw-loki-reader}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: aigw-loki-application-reader}
-subjects: [{kind: ServiceAccount, name: loki-reader, namespace: aigw-observability}]
----
+# Readers see only the demo namespaces: for an identity that isn't a cluster admin, the
+# gateway limits every query to the projects it can `get`
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata: {name: aigw-loki-reader-ns, namespace: aigw-ai}

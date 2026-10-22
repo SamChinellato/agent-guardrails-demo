@@ -1,0 +1,40 @@
+# Scrape targets on monitoring.rhobs (OS-01), picked up by the MonitoringStack through the
+# app.kubernetes.io/part-of label. Same as k3d (deploy/k3d/40-servicemonitors.yaml and the
+# APISIX chart's own ServiceMonitor, which is monitoring.coreos.com and switched off here):
+# every demo Service labelled demo/metrics=true on its "http" port (OBS-03, NFR-06), and
+# APISIX's Prometheus endpoint, all every 5 s (KS-10 timings).
+apiVersion: monitoring.rhobs/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-services
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector:
+    matchLabels: {demo/metrics: "true"}
+  endpoints:
+    - {port: http, path: /metrics, interval: 5s}
+---
+apiVersion: monitoring.rhobs/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-services
+  namespace: aigw-gateway
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector:
+    matchLabels: {demo/metrics: "true"}
+  endpoints:
+    - {port: http, path: /metrics, interval: 5s}
+---
+apiVersion: monitoring.rhobs/v1
+kind: ServiceMonitor
+metadata:
+  name: apisix
+  namespace: aigw-gateway
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: apisix}
+  endpoints:
+    - {port: prometheus, path: /apisix/prometheus/metrics, interval: 5s}

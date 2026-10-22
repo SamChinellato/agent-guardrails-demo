@@ -1,0 +1,12 @@
+# Telemetry on OpenShift (OS-01), synced by Argo CD as part of the repo-root kustomization.
+# The cluster-scoped RBAC and the Loki writer's token are in ../platform (cluster-admin).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - monitoring.yaml
+  - servicemonitors.yaml
+  - tempo.yaml
+  - tempo-rbac.yaml
+  - loki.yaml
+  - loki-rbac.yaml
+  - collector.yaml
