@@ -12,7 +12,10 @@
 # --------------------------------------------------------------------------- gateway API
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: gateway-llm, namespace: aigw-gateway}
+metadata:
+  name: gateway-llm
+  namespace: aigw-gateway
+  annotations: {haproxy.router.openshift.io/timeout: 10m}   # agent tasks and live LLM calls run past the router's 30 s
 spec:
   subdomain: aigw-gateway
   path: /llm
@@ -22,7 +25,10 @@ spec:
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: gateway-mcp, namespace: aigw-gateway}
+metadata:
+  name: gateway-mcp
+  namespace: aigw-gateway
+  annotations: {haproxy.router.openshift.io/timeout: 10m}   # agent tasks and live LLM calls run past the router's 30 s
 spec:
   subdomain: aigw-gateway
   path: /mcp
@@ -32,7 +38,10 @@ spec:
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: gateway-agents, namespace: aigw-gateway}
+metadata:
+  name: gateway-agents
+  namespace: aigw-gateway
+  annotations: {haproxy.router.openshift.io/timeout: 10m}   # agent tasks and live LLM calls run past the router's 30 s
 spec:
   subdomain: aigw-gateway
   path: /agents
@@ -42,7 +51,10 @@ spec:
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: gateway-demo, namespace: aigw-gateway}
+metadata:
+  name: gateway-demo
+  namespace: aigw-gateway
+  annotations: {haproxy.router.openshift.io/timeout: 10m}   # agent tasks and live LLM calls run past the router's 30 s
 spec:
   subdomain: aigw-gateway
   path: /demo
