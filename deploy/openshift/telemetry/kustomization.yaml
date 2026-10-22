@@ -10,3 +10,6 @@ resources:
   - loki.yaml
   - loki-rbac.yaml
   - collector.yaml
+  - grafana.yaml
+  - grafana-oauth.yaml
+  - dashboards.yaml        # generated

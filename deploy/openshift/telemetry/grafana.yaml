@@ -1,0 +1,134 @@
+# Grafana on OpenShift (OS-01, OS-04): the community Grafana Operator. Same content as k3d
+# (observability/datasources.yaml, observability/dashboards/): datasource UIDs stay
+# prometheus, loki, tempo and alertmanager, so the dashboards are unchanged. Differences:
+# - Loki and Tempo are read through their gateways with the loki-reader and tempo-reader
+#   tokens (../platform/telemetry.yaml), over TLS checked against the service CA
+# - anonymous Viewer as on k3d, but only behind the OAuth proxy at aigw-grafana.<domain>
+#   (grafana-oauth.yaml); the admin password is the grafana-admin Secret (gen-secrets.sh)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-ca
+  namespace: aigw-observability
+  annotations: {service.beta.openshift.io/inject-cabundle: "true"}   # fills service-ca.crt
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: aigw
+  namespace: aigw-observability
+  labels: {dashboards: aigw}
+spec:
+  # GRAFANA_IMAGE@GRAFANA_DIGEST (REP-02, make openshift-check)
+  version: docker.io/grafana/grafana:13.2.3-distroless@sha256:202e5d5b3f8499e70ccac7991eea6d7da72d2790eb2e0597e7987acf724e7180
+  config:
+    log: {mode: console}
+    auth: {disable_login_form: "false"}
+    auth.anonymous: {enabled: "true", org_role: Viewer}
+    users: {default_theme: dark}
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: grafana
+              env:
+                - name: GF_SECURITY_ADMIN_USER
+                  valueFrom: {secretKeyRef: {name: grafana-admin, key: admin-user}}
+                - name: GF_SECURITY_ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: grafana-admin, key: admin-password}}
+                # The operator manages the instance with these credentials too
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {cpu: "1", memory: 512Mi}
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata: {name: prometheus, namespace: aigw-observability}
+spec:
+  instanceSelector: {matchLabels: {dashboards: aigw}}
+  datasource:
+    name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://aigw-prometheus.aigw-observability.svc.cluster.local:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+      exemplarTraceIdDestinations:
+        - {name: trace_id, datasourceUid: tempo}
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata: {name: loki, namespace: aigw-observability}
+spec:
+  instanceSelector: {matchLabels: {dashboards: aigw}}
+  valuesFrom:
+    - targetPath: secureJsonData.httpHeaderValue1
+      valueFrom: {secretKeyRef: {name: loki-reader-token, key: token}}
+    - targetPath: secureJsonData.tlsCACert
+      valueFrom: {configMapKeyRef: {name: service-ca, key: service-ca.crt}}
+  datasource:
+    name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    # The application tenant; readers see only the demo namespaces (loki-rbac.yaml)
+    url: https://loki-gateway-http.aigw-observability.svc.cluster.local:8080/api/logs/v1/application
+    jsonData:
+      maxLines: 1000
+      httpHeaderName1: Authorization
+      tlsAuthWithCACert: true
+      derivedFields:
+        - {name: trace_id, matcherType: label, matcherRegex: trace_id, datasourceUid: tempo, url: "${__value.raw}", urlDisplayLabel: View trace}
+        - {name: TraceID, matcherRegex: 'trace_id"?\s*[:=]\s*"?(\w{32})', datasourceUid: tempo, url: "${__value.raw}", urlDisplayLabel: View trace}
+    secureJsonData:
+      httpHeaderValue1: "Bearer ${token}"
+      tlsCACert: "${service-ca.crt}"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata: {name: tempo, namespace: aigw-observability}
+spec:
+  instanceSelector: {matchLabels: {dashboards: aigw}}
+  valuesFrom:
+    - targetPath: secureJsonData.httpHeaderValue1
+      valueFrom: {secretKeyRef: {name: tempo-reader-token, key: token}}
+    - targetPath: secureJsonData.tlsCACert
+      valueFrom: {configMapKeyRef: {name: service-ca, key: service-ca.crt}}
+  datasource:
+    name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    # Tenant "demo" (OS-15)
+    url: https://tempo-tempo-gateway.aigw-observability.svc.cluster.local:8080/api/traces/v1/demo/tempo
+    jsonData:
+      httpHeaderName1: Authorization
+      tlsAuthWithCACert: true
+      nodeGraph: {enabled: true}
+      search: {hide: false}
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -10m
+        spanEndTimeShift: 10m
+        customQuery: true
+        query: '{service_name=~".+"} | json | trace_id="${__trace.traceId}"'
+      tracesToMetrics: {datasourceUid: prometheus}
+    secureJsonData:
+      httpHeaderValue1: "Bearer ${token}"
+      tlsCACert: "${service-ca.crt}"
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata: {name: alertmanager, namespace: aigw-observability}
+spec:
+  instanceSelector: {matchLabels: {dashboards: aigw}}
+  datasource:
+    name: Alertmanager
+    uid: alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://aigw-alertmanager.aigw-observability.svc.cluster.local:9093
+    jsonData: {implementation: prometheus}

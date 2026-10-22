@@ -13,10 +13,12 @@ log "namespaces and image pullers"
 oc apply -f "$ROOT/deploy/openshift/namespaces.yaml" >/dev/null
 oc apply -f "$ROOT/deploy/openshift/build/image-pullers.yaml" >/dev/null
 
-log "telemetry RBAC and the Loki writer's token"
-# The token Secret's ServiceAccount lives in git (synced by Argo CD); create it here too
-# if the first sync hasn't, so the token controller can fill the Secret
-oc -n aigw-gateway create serviceaccount apisix-log-writer --dry-run=client -o yaml | oc apply -f - >/dev/null
+log "telemetry RBAC and the gateway tokens (Loki writer, Loki and Tempo readers)"
+# The token Secrets' ServiceAccounts live in git (synced by Argo CD); create them here too
+# if the first sync hasn't, so the token controller can fill the Secrets
+for sa in aigw-gateway/apisix-log-writer aigw-observability/loki-reader aigw-observability/tempo-reader; do
+  oc -n "${sa%/*}" create serviceaccount "${sa#*/}" --dry-run=client -o yaml | oc apply -f - >/dev/null
+done
 oc apply -f "$ROOT/deploy/openshift/platform/telemetry.yaml" >/dev/null
 
 "$ROOT/scripts/openshift/apiserver-egress.sh"

@@ -69,6 +69,24 @@ configMapGenerator:
     namespace: aigw-gateway
     files:
       - gateway/plugins/ai-injection-guard.lua
+  # Grafana dashboards (OBS-05), unchanged from k3d; dashboards.yaml points one
+  # GrafanaDashboard at each
+  - name: dashboard-agent-behaviour
+    namespace: aigw-observability
+    files:
+      - observability/dashboards/agent-behaviour.json
+  - name: dashboard-ai-gateway-overview
+    namespace: aigw-observability
+    files:
+      - observability/dashboards/ai-gateway-overview.json
+  - name: dashboard-decision-trail
+    namespace: aigw-observability
+    files:
+      - observability/dashboards/decision-trail.json
+  - name: dashboard-incident
+    namespace: aigw-observability
+    files:
+      - observability/dashboards/incident.json
   # gateway/ for the gateway-bootstrap Job (OS-10), one ConfigMap per kind, mounted at
   # /gateway/<kind> (ConfigMap keys can't hold a path)
   - name: gateway-consumers

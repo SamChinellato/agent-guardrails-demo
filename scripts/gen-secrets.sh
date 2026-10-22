@@ -52,4 +52,5 @@ kubectl -n "$NS_OBS" create secret generic grafana-admin \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 if [[ "$TARGET" == openshift ]]; then
   apply_secret "$NS_GATEWAY" oauth-proxy-cookie cookie-secret=oauth-proxy-cookie
+  apply_secret "$NS_OBS" oauth-proxy-cookie cookie-secret=oauth-proxy-cookie   # Grafana's proxy
 fi

@@ -1,0 +1,72 @@
+# Grafana at aigw-grafana.<domain> (OS-04): the cluster's oauth-proxy in front, admitting the
+# same users as the console (get Services in aigw-gateway); then anonymous Viewer as on k3d.
+# Same shape as ../apps/gateway/exposure.yaml. aigw-observability has no default-deny
+# policy, so this proxy needs no allows; its cookie secret is created by gen-secrets.sh.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana-oauth
+  namespace: aigw-observability
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.grafana: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"grafana"}}'
+---
+apiVersion: v1
+kind: Service
+metadata: {name: grafana-oauth, namespace: aigw-observability, labels: {app: grafana-oauth}}
+spec:
+  selector: {app: grafana-oauth}
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: grafana, namespace: aigw-observability}
+spec:
+  subdomain: aigw-grafana
+  to: {kind: Service, name: grafana-oauth}
+  port: {targetPort: http}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-oauth
+  namespace: aigw-observability
+  labels: {app: grafana-oauth}
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"oauth-proxy:v4.4","namespace":"openshift"},"fieldPath":"spec.template.spec.containers[?(@.name==\"oauth-proxy\")].image"}]'
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: grafana-oauth}}
+  template:
+    metadata: {labels: {app: grafana-oauth}}
+    spec:
+      serviceAccountName: grafana-oauth
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: oauth-proxy
+          image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+          args:
+            - --provider=openshift
+            - --http-address=:8080
+            - --https-address=
+            - --upstream=http://aigw-service.aigw-observability.svc.cluster.local:3000
+            - --openshift-service-account=grafana-oauth
+            - --cookie-secret-file=/etc/oauth/cookie-secret
+            - --cookie-secure=true
+            - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /oauth/healthz, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+      volumes:
+        - name: cookie
+          secret: {secretName: oauth-proxy-cookie}
