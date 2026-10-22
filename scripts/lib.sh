@@ -190,11 +190,11 @@ os_arch() {
 }
 
 # render_env FILE: substitute ${VAR} from the environment; fail if any referenced VAR is
-# unset, so a missing pin never renders as an empty string.
+# unset, so a missing pin never renders silently. A VAR set to "" is substituted as "".
 render_env() {
   local vars missing=()
   vars="$(grep -oE '\$\{[A-Z0-9_]+\}' "$1" | sort -u | tr -d '${}')"
-  for v in $vars; do [[ -n "${!v:-}" ]] || missing+=("$v"); done
+  for v in $vars; do [[ -n "${!v+x}" ]] || missing+=("$v"); done
   (( ${#missing[@]} == 0 )) || die "$1: unset template variables: ${missing[*]}"
   # versions.env values are plain shell variables: export just these to envsubst
   # shellcheck disable=SC2046

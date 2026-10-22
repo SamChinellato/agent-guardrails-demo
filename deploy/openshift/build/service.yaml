@@ -1,0 +1,42 @@
+# One ImageStream and binary Docker-strategy BuildConfig per service (OS-02), rendered by
+# scripts/openshift/build-images.sh for each ${SERVICE}. Same Dockerfile and pinned build
+# args as scripts/build-images.sh on k3d. Builds run in aigw-build, which has no
+# default-deny NetworkPolicy, so the guard build can fetch its classifier (GRD-01).
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: ${SERVICE}
+  namespace: aigw-build
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  lookupPolicy: {local: true}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: ${SERVICE}
+  namespace: aigw-build
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  runPolicy: Serial
+  successfulBuildsHistoryLimit: 3
+  failedBuildsHistoryLimit: 3
+  source: {type: Binary}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      buildArgs:
+        - {name: SERVICE, value: "${SERVICE}"}
+        - {name: PYTHON_BASE, value: "${PYTHON_BASE_REF}"}
+        - {name: UV_IMAGE, value: "${UV_REF}"}
+        - {name: CLASSIFIER_MODEL, value: "${BUILD_CLASSIFIER_MODEL}"}
+        - {name: CLASSIFIER_REVISION, value: "${BUILD_CLASSIFIER_REVISION}"}
+        - {name: CLASSIFIER_ONNX_SHA256, value: "${BUILD_CLASSIFIER_ONNX_SHA256}"}
+        - {name: CLASSIFIER_TOKENIZER_SHA256, value: "${BUILD_CLASSIFIER_TOKENIZER_SHA256}"}
+        - {name: CLASSIFIER_CONFIG_SHA256, value: "${BUILD_CLASSIFIER_CONFIG_SHA256}"}
+  output:
+    to: {kind: ImageStreamTag, name: "${SERVICE}:latest"}
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 4Gi}
