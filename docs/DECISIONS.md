@@ -648,3 +648,14 @@ Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is
 - **Image.** No pinned image had both curl and jq, so `gateway-bootstrap` is built in `aigw-build` from `deploy/openshift/bootstrap/Dockerfile`: the pinned Python base plus `curl` and `jq` at the Debian versions pinned in `versions.env` (`BOOTSTRAP_CURL_VERSION`, `BOOTSTRAP_JQ_VERSION`). Chosen by the operator over a Python rewrite or keeping the bootstrap in `make`. A Job can't carry an image trigger, so it pulls `:latest` on each run.
 - **Inputs.** `gateway/` comes from one ConfigMap per kind (`gateway-routes`, ...), generated in the root kustomization (D-054) and mounted at `/gateway/<kind>`; keys from the `apisix-admin` and `consumer-keys` Secrets; the live LLM is llama.cpp in `aigw-ai` (D-052).
 - **Not yet:** the NetworkPolicy that admits only this Job and the kill switch to the Admin API (workstream 2), and `LLM_MODE=live` (workstream 5; the Job sets `mock`).
+
+## D-056: OpenShift exposure and network policy specifics (OS-04, workstream 2)
+
+- **Hosts without cluster names in git.** Routes use `subdomain`, so hosts are `aigw-gateway.<ingress domain>`, `aigw-console.<…>` and `aigw-killswitch.<…>` on any cluster.
+- **The gateway host routes only key-protected prefixes** (`/llm`, `/mcp`, `/agents`, `/demo`). `/console` isn't routed there (the router answers 503), because the console has no login of its own (D-043). It's reached only at `aigw-console.<…>/console`, behind OpenShift OAuth.
+- **OAuth proxies** in front of the console and the kill-switch panel admit users who may `get` Services in `aigw-gateway`. Their image is the cluster's own `openshift/oauth-proxy:v4.4` ImageStream, followed by an image trigger. This deviates from REP-02's digest pins in `versions.env`: the image is versioned with the cluster release (4.19.38 here), and `make pin-check` can't resolve `registry.redhat.io` without credentials. The cookie secret comes from `gen-secrets.sh`.
+- **The kill-switch panel Service is ClusterIP** on OpenShift (a NodePort on k3d).
+- **API server egress** (console, OAuth proxies) needs the control-plane IPs, which differ per cluster. `scripts/openshift/apiserver-egress.sh` applies it from the live `kubernetes` endpoints, outside git; Argo CD doesn't track or prune it.
+- **APISIX's data plane** admits named sources only (the router, `aigw-ai`, the console's OAuth proxy, the kill switch's probe), where k3d admits anything that reaches the NodePort.
+- **The OAuth proxies' egress** is 443 and 6443 to any address: they log users in against the cluster's OAuth server, whose address is the public `oauth-openshift` Route.
+- **Verified** by `scripts/openshift/verify-netpol.sh` (16 flows, from inside the pods) and from outside: on the gateway host, no key 401, `demo-user` on the LLM 403, the probe 200 through the guard; HTTP redirects to HTTPS; the OAuth hosts serve the OpenShift login.

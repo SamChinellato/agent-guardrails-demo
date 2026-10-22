@@ -146,6 +146,8 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
 | Prometheus, Alertmanager, evidence, APISIX Admin | none | `make ui UI=…` / `make admin-ui` port-forward |
 
+Hosts (from `subdomain`, so the same on any cluster): `aigw-gateway.<domain>` (only `/llm`, `/mcp`, `/agents`, `/demo`), `aigw-console.<domain>/console`, `aigw-killswitch.<domain>`. Verified 2026-10-22 (D-056).
+
 The oauth-proxy sidecars limit access with `--openshift-sar` to users who can `get` Services in the demo namespaces, so cluster-admin and invited presenters get in and other tenants don't. The NetworkPolicies allow ingress from the router namespace only to the oauth-proxy ports (and APISIX :9080 for the gateway Route).
 
 ## Policy hot reload (OS-05)
@@ -229,7 +231,7 @@ Service addresses (`*.gateway.svc.cluster.local`, ...) appear in manifests, gate
 Phased so the demo keeps working on k3d throughout: OpenShift is a second **target**, chosen with `TARGET=openshift` (default `k3d`).
 
 1. **Plumbing.** `TARGET` in `lib.sh`; `oc login` check in `prereqs`; manifests reorganised into a Kustomize base plus the OpenShift overlay, with k3d behaviour unchanged (**done**, see [Repository layout](#repository-layout)); OpenShift GitOps install (**done**: operator 1.22.2 and the `openshift-gitops` instance) and the Application (**done**: `aigw-workloads`, first sync verified 2026-10-22); BuildConfigs and ImageStreams (**done**). An app-of-apps root comes when there is more than one Application.
-2. **Platform fit.** `restricted-v2` (image runs as any UID in group 0), NetworkPolicies for OVN-K, Admin allow-list, Routes with oauth-proxy, evidence viewer replacement.
+2. **Platform fit.** `restricted-v2` (**done**: every workload runs with an assigned UID, no exceptions so far), NetworkPolicies for OVN-K (**done**, verified by `scripts/openshift/verify-netpol.sh`), Admin allow-list (**done**), Routes with oauth-proxy (**done** for the gateway API, console and kill-switch panel; Grafana with workstream 3), evidence viewer replacement (OS-13: `make ui UI=evidence`, workstream 6). See D-056.
 3. **Telemetry.** Operator subscriptions, then the CRs in [Telemetry](#telemetry), with dashboards, datasources and alert rules unchanged in content. Spikes first: LokiStack tenancy and OTLP ingest, COO Alertmanager config, APISIX logs.
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
 5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
