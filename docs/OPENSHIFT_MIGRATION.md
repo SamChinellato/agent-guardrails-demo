@@ -1,6 +1,6 @@
 # OpenShift migration plan
 
-**Status: draft, all planning questions answered (OS-01 to OS-14); spikes and implementation next.** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
+**Status: all planning questions answered (OS-01 to OS-16) and all spikes done; implementation next, starting with workstream 1.** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
 
 ## Goal
 
@@ -38,7 +38,7 @@ Constraint: the telemetry stack (metrics, alerts, traces, logs, dashboards) must
 | NetworkPolicies | k3s kube-router; DNS in `kube-system` | OVN-K. DNS selectors move to `openshift-dns` (port **5353**); allow ingress from the router (`policy-group.network.openshift.io/ingress`); API server egress to the control-plane IPs on 6443 | M |
 | APISIX Admin allow-list | `10.42.0.0/16` | `10.128.0.0/14` | S |
 | Policy hot reload (GRD-02, 10 s) | kubelet `sync-frequency=5s` | `k8s-sidecar` in the guard pod watches the ConfigMap through the API and writes it to a shared `emptyDir`; guard code unchanged (**OS-05**, [Policy hot reload](#policy-hot-reload-os-05)) | S |
-| Live LLM | Ollama on the host | vLLM (CPU backend) in-cluster serving Granite 4.0 Micro (**OS-03**) | L |
+| Live LLM | Ollama on the host | llama.cpp in-cluster serving the 4-bit Granite 4.0 Micro GGUF on CPU (**OS-16**, superseding vLLM in OS-03) | L |
 | Telemetry | kube-prometheus-stack (own operator + CRDs), Tempo, Loki, OTel Collector, Grafana via Helm | Red Hat operators: COO, Tempo, Loki, OpenTelemetry; Grafana Operator (**OS-01**, [Telemetry](#telemetry)) | L |
 | Version pins | `versions.env` | Add new images/charts/operator channels; k3d-only pins stay for the local path | S |
 
@@ -66,16 +66,19 @@ Content is unchanged: dashboards, datasource UIDs, alert expressions, the 5 s sc
 
 Operators are installed from `redhat-operators` (and `community-operators` for Grafana) by `Subscription`s pinned to a channel with `installPlanApproval: Manual`, and the approved CSV versions are recorded in `versions.env` (REP-02).
 
-## Live LLM on vLLM (OS-03)
+## Live LLM on llama.cpp (OS-03, OS-16)
 
-The gateway's live provider is already OpenAI-compatible (`gateway/upstreams/llm.live.json`), so only the URL and model name change.
+The gateway's live provider is already OpenAI-compatible (`gateway/upstreams/llm.live.json`), so only the endpoint and model name change: `${OLLAMA_URL}` and `${OLLAMA_MODEL}` become the llama.cpp Service and its alias on OpenShift. The original choice was vLLM (OS-03); on these CPU-only workers it was too slow at full precision ([trial 4](#trial-4-results-2026-10-22)), and llama.cpp with the 4-bit model was the fastest of the options measured ([trial 5](#trial-5-results-2026-10-22-4-bit-granite-on-cpu)).
 
-- **Server.** vLLM's CPU backend as a Deployment in `ai`, OpenAI API on :8000, `--enable-auto-tool-choice` with the Granite tool-call parser. The workers have AVX-512F and VNNI but no AVX512-BF16 or AMX (checked 2026-10-22), so `--dtype` is a spike item (bf16 falls back to slower kernels; fp32 doubles memory).
-- **Model.** `ibm-granite/granite-4.0-micro` from Hugging Face at a pinned revision (the same model Ollama's `granite4:micro` packages). Weights go into a PVC by an init step that verifies SHA-256, as the guard does for its classifier (GRD-01), so the server makes no network calls at runtime.
-- **Not byte-identical to today.** Ollama serves a 4-bit GGUF; vLLM serves full-precision weights. Live answers will differ from the k3d runs, but `temperature: 0` and `seed` still apply.
-- **Sizing.** About 3B parameters: roughly 7 GiB of weights in bf16 or 13 GiB in fp32, plus KV cache. Request 8–12 CPUs and 16–24 GiB on one worker. Spike: tokens per second, and whether the 120 s gateway timeout and the agents' 6 steps still fit a live scenario on stage.
-- **NetworkPolicy.** Only APISIX reaches vLLM (it joins the `from-gateway` selector); the init step needs egress to `huggingface.co` once, or the weights are staged by a build-namespace Job.
-- **Version pins.** vLLM CPU image by digest, model revision and file SHA-256s in `versions.env`.
+- **Server.** llama.cpp's `llama-server` (`LLAMACPP_IMAGE` by digest) as a Deployment `llamacpp` in `aigw-ai`, OpenAI API on :8000, `--jinja` so the GGUF's own chat template handles tool calls, `--alias granite-4.0-micro`, 16k context. `enableServiceLinks: false` and `readOnlyRootFilesystem`, under `restricted-v2`.
+- **Model.** IBM's official `Q4_K_M` GGUF of Granite 4.0 Micro (`ibm-granite/granite-4.0-micro-GGUF` at `GGUF_MODEL_REVISION`), about 2 GB. The `gguf-fetch` Job stages it on the CephFS (RWX) `models` volume and checks it against `deploy/openshift/llm/granite-4.0-micro-gguf.sha256`; the server's init container re-verifies it with no network, so the server makes none at runtime (as GRD-01 does for the classifier).
+- **Sizing.** 12 CPUs with `--threads 12` (threads equal to the CPU limit; more throttles), 6–8 GiB. The most that fits beside other tenants' pods: no worker had 14 CPUs free on 2026-10-22.
+- **Speed (measured).** About 72 tokens/s reading prompts and 7.5 tokens/s generating; a two-step agent task in 23–32 s against 18–27 s on the presenter's laptop. Long answers stream at half the laptop's speed; generation is bound by memory bandwidth, so more threads won't fix that.
+- **Not byte-identical to k3d.** Same 4-bit weights as the host's `granite4:micro`, but llama.cpp applies the GGUF's template and Ollama its own (501 vs 452 prompt tokens for the same messages), and the thread count changes the arithmetic. `temperature: 0` and `seed` still apply, and the thread count is pinned with the model.
+- **Prompt cache stays on**, as on the k3d host's Ollama. A step served from the cache can differ slightly from the same step computed fresh. This affects no requirement: `make test` and evidence (EVD-05) use the mock LLM.
+- **NetworkPolicy.** Only APISIX reaches `llamacpp` (it joins the `from-gateway` selector). The `gguf-fetch` Job needs egress to `huggingface.co` once.
+- **Version pins.** `LLAMACPP_IMAGE`/`LLAMACPP_DIGEST`, `GGUF_MODEL_REPO`/`GGUF_MODEL_REVISION` in `versions.env`, file SHA-256 in the manifest file.
+- **Trial leftovers.** `vllm.yaml` and `ollama.yaml` stay in `deploy/openshift/llm/` as the record of trials 4 and 5, scaled to zero, and are not part of the overlay.
 
 ### Trial 4 results (2026-10-22)
 
@@ -89,7 +92,40 @@ Deployed with vLLM v0.31.0 CPU (`deploy/openshift/llm/`), 12 CPUs and 24–32 Gi
 | Generation speed | **1.6–1.9 tokens/s** in bf16 and in fp32 |
 | Prompt reading | ~65 tokens/s (a 2,600-token prompt: 40 s before the first token) |
 
-**Too slow for a live demo.** CPU generation is limited by memory bandwidth: each token reads all weights (about 7 GB in bf16, 13 GB in fp32). One agent step with documents would take minutes and break the gateway's 120 s timeout. Ollama's 4-bit GGUF reads about 2 GB per token. vLLM is scaled to zero pending **Q-16**.
+**Too slow for a live demo.** CPU generation is limited by memory bandwidth: each token reads all weights (about 7 GB in bf16, 13 GB in fp32). One agent step with documents would take minutes and break the gateway's 120 s timeout. Ollama's 4-bit GGUF reads about 2 GB per token. vLLM is scaled to zero; see **OS-16**.
+
+### Trial 5 results (2026-10-22): 4-bit Granite on CPU
+
+Two servers for the same 4-bit Granite 4.0 Micro, each with 8 CPUs on its own worker, models staged and verified on the CephFS volume: **llama.cpp** `server-b11312` with IBM's `Q4_K_M` GGUF (`--jinja`, 16k context, 8 threads) and **Ollama** 0.12.10 with `granite4:micro` (the k3d host's digest). Measured with `scripts/openshift/bench_llm.py` through port-forwards: a cold ~3,200-token prompt (cache-busting nonce, streamed), then the researcher agent's loop as the agents call it (its system prompt, `docs__` tools answered from the fixtures, temperature 0, seed 42), run twice.
+
+| | llama.cpp | Ollama as deployed | Ollama, 8 threads, 16k context |
+|---|---|---|---|
+| Prompt reading | **57 tokens/s** | 20 tokens/s | 23–24 tokens/s |
+| Time to first token, 3,200-token prompt | **55–56 s** | 156–157 s (over 120 s) | 133–138 s (over 120 s) |
+| Generation | 5.7–5.8 tokens/s | 3.1–3.2 tokens/s | **6.3–6.6 tokens/s** |
+| Agent task (2 steps: list, answer) | **27–34 s**, slowest step 25 s | 63–71 s, slowest step 59 s | 42–53 s, slowest step 40 s |
+| Tool call | `docs__list_documents` | same | same |
+| Answer | Both below-target suppliers; one gap wrong (7.5 for 6.5) | Missed Summit (94.0 %); run 2 calls it above target | same as as-deployed |
+
+For comparison, vLLM at full precision (trial 4) generated 1.6–1.9 tokens/s.
+
+**Scaled up, against the k3d host.** llama.cpp at 12 CPUs and 12 threads (the most that fits beside other tenants' pods; no worker had 14 CPUs free), on worker-5, compared with the presenter's laptop (i9-12900H, CPU only, host Ollama with the same `granite4:micro`):
+
+| | llama.cpp, 8 threads | llama.cpp, 12 threads | Laptop (k3d host Ollama) |
+|---|---|---|---|
+| Prompt reading | 57 tokens/s | **72 tokens/s** | 42–45 tokens/s |
+| Time to first token, 3,200-token prompt | 55–56 s | **44 s** | 71–76 s |
+| Generation | 5.7–5.8 tokens/s | 7.4–7.6 tokens/s | **15.4–15.6 tokens/s** |
+| Agent task (2 steps) | 27–34 s | 23–32 s | **18–27 s** |
+
+At 12 threads agent tasks feel close to the laptop and long prompts are faster; long answers stream at half the laptop's speed. Generation reads all ~2 GB of weights per token, so it is bound by memory bandwidth (about 15 GB/s here against about 30 GB/s on the laptop) and gains little from more threads. The laptop shows the same model errors (a wrong gap, the 94 % supplier missed, a different answer on repeat), so they aren't caused by the cluster. Changing the thread count also changes the answers (summation order), so the thread count belongs in the pinned configuration.
+
+- **llama.cpp is the faster server overall.** It reads prompts 2.4× faster than Ollama, which is what dominates agent steps (documents and tool results are input, answers are short). Ollama generates slightly faster at 8 threads.
+- **Ollama as deployed oversubscribes its CPUs.** Its runner starts one thread per node vCPU (16) under an 8-CPU limit; the CFS throttling halves generation. Ollama has no environment variable for the thread count (only per request or in a Modelfile), and its default 4,096-token context would truncate longer agent prompts (`OLLAMA_CONTEXT_LENGTH=16384` added to `ollama.yaml`).
+- **Determinism holds per prompt-cache state, not across it.** Both servers repeat exactly when the cache state is the same (Ollama's two endpoints gave identical run-1 and run-2 transcripts), but a step served from the prompt cache differs from the same step computed fresh: one token for llama.cpp, a different answer for Ollama. Evidence and `make test` comparisons need the cache disabled (`cache_prompt: false` on llama.cpp) or a restart between runs.
+- **The two servers apply different chat templates.** The same messages are 501 prompt tokens on llama.cpp (the GGUF's own Jinja template) and 452 on Ollama (its packaged template), so answers differ between them as well as from k3d's host Ollama.
+- **Model quality limits.** Both ignore the "three plain sentences, no headings" instruction and can get simple arithmetic wrong.
+- **Timeout headroom.** A cold 3,200-token step takes about 56 s on llama.cpp, under the 120 s gateway timeout; on Ollama it exceeds it. Port-forward drops pooled idle connections, so the benchmark opens one connection per request.
 
 Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, which vLLM rejects (`enableServiceLinks: false`); a single-node (RWO) volume can't be shared by the fetch Job and the server (moved to CephFS RWX, with a verify-only init container).
 
@@ -172,7 +208,7 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 2. **Platform fit.** `restricted-v2` (image runs as any UID in group 0), NetworkPolicies for OVN-K, Admin allow-list, Routes with oauth-proxy, evidence viewer replacement.
 3. **Telemetry.** Operator subscriptions, then the CRs in [Telemetry](#telemetry), with dashboards, datasources and alert rules unchanged in content. Spikes first: LokiStack tenancy and OTLP ingest, COO Alertmanager config, APISIX logs.
 4. **Policy hot reload.** `k8s-sidecar` in the guard pod on both targets; drop `sync-frequency=5s` from k3d; acceptance test for the 10 s bound on both.
-5. **Live LLM.** vLLM spike (dtype, tokens per second, tool calling with Granite), then the Deployment, model staging and the `llm.live` upstream.
+5. **Live LLM.** Spikes done (trials 4 and 5, OS-16). Remaining: `llamacpp` into the OpenShift overlay, the `from-gateway` NetworkPolicy, and the `llm.live` upstream pointed at it.
 6. **Operator tooling.** CLI and tests read Route URLs; console Grafana link; `make status` / `logs` / `ui` on OpenShift.
 7. **Verification.** `make up` twice (idempotent), `make test` green on OpenShift, `make demo-all`, an evidence bundle that verifies, `verify-netpol.sh` passing on OVN-K. Record deviations as D-0xx in `DECISIONS.md`.
 
@@ -198,19 +234,20 @@ Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted after
 1. **Done.** **LokiStack + OTLP:** `openshift-logging` tenancy on a NooBaa bucket; the collector writes OTLP to the `application` tenant with a bearer token; Grafana queries with `trace_id` structured metadata; 24 h retention.
 2. **Done.** **COO Alertmanager:** supply our full route and the killswitch webhook with the bearer token file; 5 s rule evaluation.
 3. **Done.** **APISIX logs:** `loki-logger` to the LokiStack gateway with a write-only token (the Red Hat collector has no Loki receiver).
-4. **Done, too slow.** **vLLM CPU:** works (tool calls, determinism) but 1.6–1.9 tokens/s; see [Trial 4 results](#trial-4-results-2026-10-22) and **Q-16**.
+4. **Done, too slow.** **vLLM CPU:** works (tool calls, determinism) but 1.6–1.9 tokens/s; see [Trial 4 results](#trial-4-results-2026-10-22) and **OS-16**.
+7. **Done.** **4-bit Granite on CPU:** llama.cpp and Ollama; llama.cpp fits a two-step agent task in about 30 s; see [Trial 5 results](#trial-5-results-2026-10-22-4-bit-granite-on-cpu).
 5. **Done.** **BuildConfig:** the shared Dockerfile with `ARG`-based `FROM` lines, and the guard's classifier download, under a Docker-strategy binary build.
 6. **Settled.** **openshift-gitops permissions:** operators and namespaces are installed by `make` as cluster-admin (`scripts/openshift/install-operators.sh`); Argo CD only manages namespaced objects in the `aigw-` namespaces.
 
 ## Open questions
 
-- **Q-16** Live LLM: vLLM on CPU is too slow at full precision. Choose between a quantized model on vLLM, Ollama in the cluster (same 4-bit model as k3d), a GPU node, or mock-only on OpenShift.
+None. Q-16 is answered by OS-16.
 
 ## Decisions
 
 - **OS-01 (Q-1) Telemetry: Red Hat operators.** COO `MonitoringStack`, Tempo Operator, Loki Operator, Red Hat build of OpenTelemetry; Grafana Operator (community) for dashboards. Chosen over keeping the Helm charts for supportability. Nothing is registered with platform monitoring.
 - **OS-02 (Q-2) Images: in-cluster `BuildConfig`s** into ImageStreams in a build namespace; workloads pull by digest.
-- **OS-03 (Q-3) Live LLM: vLLM on the cluster (CPU) with Granite 4.0 Micro**, instead of the host Ollama. Outputs will differ from the 4-bit Ollama build.
+- **OS-03 (Q-3) Live LLM: vLLM on the cluster (CPU) with Granite 4.0 Micro**, instead of the host Ollama. Outputs will differ from the 4-bit Ollama build. *Superseded by OS-16.*
 - **OS-04 (Q-4) Exposure: demo UIs on edge-TLS Routes behind OpenShift OAuth proxy**; the gateway API Route stays key-auth only; Prometheus, Alertmanager, evidence and the Admin API by port-forward.
 - **OS-05 (Q-5) Policy hot reload: `k8s-sidecar` in the guard pod**, writing the ConfigMap to a shared `emptyDir` the guard already polls. Guard code unchanged; only the sidecar holds an API token. A `GuardPolicy` CRD is a possible later phase.
 - **OS-06 (Q-6) Pod security: `restricted-v2` with arbitrary UIDs.** Fixed UIDs come out of the OpenShift overlay; exceptions get `nonroot-v2` on their own service account and are recorded.
@@ -223,3 +260,4 @@ Each is short, on the cluster, in a scratch `aigw-spike` namespace deleted after
 - **OS-13 (Q-7) Evidence is served locally** by `make ui UI=evidence`; no in-cluster viewer on OpenShift.
 - **OS-14 (Q-14) Argo CD tracks `main`** of the private GitHub repository through a read-only deploy key added out of band; the branch can be overridden for testing.
 - **OS-15 Tempo is multi-tenant in `openshift` mode**, the only mode Red Hat supports. Readers (Grafana, console, evidence CLI) use a service-account bearer token.
+- **OS-16 (Q-16) Live LLM: llama.cpp in the cluster with IBM's 4-bit `Q4_K_M` GGUF of Granite 4.0 Micro**, 12 CPUs and 12 threads, supersedes vLLM (OS-03). vLLM at full precision generated under 2 tokens/s; llama.cpp reads prompts 2.4× faster than Ollama in the cluster, and its agent tasks come within a few seconds of the presenter's laptop ([trial 5](#trial-5-results-2026-10-22-4-bit-granite-on-cpu)). The k3d target keeps the host Ollama (D-002). Recorded as D-052.

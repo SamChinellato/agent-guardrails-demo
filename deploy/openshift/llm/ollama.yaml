@@ -1,0 +1,135 @@
+# Live-mode LLM on OpenShift (OS-03, Q-16 trial): Ollama on CPU serving granite4:micro, the
+# same build and digest as the k3d host (versions.env OLLAMA_MODEL / OLLAMA_MODEL_DIGEST).
+# ollama-pull pulls it into the shared models volume and checks the digest; the server
+# pod re-verifies manifest and blobs (no network) before it starts.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-pull
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {app: ollama-pull}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: pull
+          image: ${OLLAMA_REF}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              ollama serve >/tmp/serve.log 2>&1 &
+              until ollama list >/dev/null 2>&1; do sleep 1; done
+              ollama pull "$OLLAMA_MODEL"
+              ollama list
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OLLAMA_MODELS, value: /models/ollama}
+            - {name: OLLAMA_MODEL, value: "${OLLAMA_MODEL}"}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: aigw-ai
+  labels: {app: ollama, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector: {app: ollama}
+  ports:
+    - {name: http, port: 11434, targetPort: 11434}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: aigw-ai
+  labels: {app: ollama, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: ollama}
+  template:
+    metadata:
+      labels: {app: ollama}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: verify-model
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "/verify/verify_ollama.py", "--wait"]
+          env:
+            - {name: OLLAMA_MODELS, value: /models/ollama}
+            - {name: OLLAMA_MODEL, value: "${OLLAMA_MODEL}"}
+            - {name: OLLAMA_MODEL_DIGEST, value: "${OLLAMA_MODEL_DIGEST}"}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: verify, mountPath: /verify, readOnly: true}
+      containers:
+        - name: ollama
+          image: ${OLLAMA_REF}
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OLLAMA_HOST, value: "0.0.0.0:11434"}
+            - {name: OLLAMA_MODELS, value: /models/ollama}
+            - {name: OLLAMA_KEEP_ALIVE, value: "-1"}      # keep the model loaded between scenarios
+            - {name: OLLAMA_NUM_PARALLEL, value: "1"}
+            - {name: OLLAMA_CONTEXT_LENGTH, value: "16384"}  # same as llamacpp; the 4096 default truncates agent prompts
+            - {name: OLLAMA_NOPRUNE, value: "1"}          # read-only models volume
+          ports:
+            - {name: http, containerPort: 11434}
+          readinessProbe:
+            httpGet: {path: /api/version, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: "8", memory: 6Gi}
+            limits: {cpu: "8", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
+        - name: verify
+          configMap: {name: model-verify}

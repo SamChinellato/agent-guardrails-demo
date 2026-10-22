@@ -597,3 +597,25 @@ At the operator's request, the clickable architecture page is gone. The console'
 ## D-051: The empty chat shows only the heading and starter prompts
 
 At the operator's request, the empty chat no longer has the researcher's introduction or the sample-document links. The samples are still served at `/console/samples/` (D-047), and `DEMO_SCRIPT.md` gives their address.
+
+## D-052: On OpenShift, the live LLM is llama.cpp in the cluster (OpenShift target only; k3d keeps D-002)
+
+**Change.** With `TARGET=openshift` there is no host Ollama to reach, so live mode runs llama.cpp's `llama-server` as a Deployment in `aigw-ai`. It serves IBM's official 4-bit `Q4_K_M` GGUF of Granite 4.0 Micro, the same weights the host's `granite4:micro` packages. The k3d target is unchanged.
+
+**Why llama.cpp.** Measured on the cluster's CPU-only workers (`docs/OPENSHIFT_MIGRATION.md`, trials 4 and 5, with `scripts/openshift/bench_llm.py`):
+
+| Server | Prompt reading | Generation | Two-step agent task |
+|---|---|---|---|
+| vLLM CPU, full precision | ~65 tokens/s | 1.6–1.9 tokens/s | minutes (over the 120 s gateway timeout) |
+| Ollama 0.12.10, 8 CPUs | 23–24 tokens/s | 6.3–6.6 tokens/s | 42–53 s |
+| **llama.cpp, 12 CPUs** | **72 tokens/s** | 7.4–7.6 tokens/s | **23–32 s** |
+| Presenter's laptop (host Ollama, k3d) | 42–45 tokens/s | 15.4–15.6 tokens/s | 18–27 s |
+
+Agent steps are mostly prompt reading, where llama.cpp is fastest. Generation is bound by memory bandwidth and stays at half the laptop's speed.
+
+**Pinned.** `LLAMACPP_IMAGE`/`LLAMACPP_DIGEST`, `GGUF_MODEL_REPO`/`GGUF_MODEL_REVISION` and the file's SHA-256 (`deploy/openshift/llm/granite-4.0-micro-gguf.sha256`, verified at staging and again before the server starts). The thread count (12) is pinned too, because it changes the arithmetic and so the answers.
+
+**Consequences.**
+- Live answers differ from the k3d runs: llama.cpp applies the GGUF's chat template and Ollama its own (501 vs 452 prompt tokens for the same messages).
+- The prompt cache stays on, as with Ollama, so a cached step can differ slightly from a fresh one. Tests and evidence (EVD-05) use the mock LLM, so no requirement depends on live output.
+- The model's own limits are the same on both targets: it can ignore the "three plain sentences" instruction and get simple arithmetic wrong.

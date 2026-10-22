@@ -1,0 +1,126 @@
+# Live-mode LLM on OpenShift (OS-03, Q-16 trial): llama.cpp's OpenAI-compatible server on
+# CPU with IBM's official Q4_K_M GGUF of Granite 4.0 Micro. gguf-fetch stages the file into
+# the shared models volume, verified against granite-4.0-micro-gguf.sha256; the server pod
+# re-verifies it (no network) before it starts.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gguf-fetch
+  namespace: aigw-ai
+  labels: {app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {app: gguf-fetch}
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: fetch
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "/fetch/fetch_model.py"]
+          env:
+            - {name: MODEL_REPO, value: "${GGUF_MODEL_REPO}"}
+            - {name: MODEL_REVISION, value: "${GGUF_MODEL_REVISION}"}
+            - {name: MODEL_DIR, value: /models/granite-4.0-micro-gguf}
+            - {name: MANIFEST, value: /fetch/granite-4.0-micro-gguf.sha256}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models}
+            - {name: fetch, mountPath: /fetch, readOnly: true}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: fetch
+          configMap: {name: model-fetch}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llamacpp
+  namespace: aigw-ai
+  labels: {app: llamacpp, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  selector: {app: llamacpp}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llamacpp
+  namespace: aigw-ai
+  labels: {app: llamacpp, app.kubernetes.io/part-of: ai-gateway-demo}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: llamacpp}
+  template:
+    metadata:
+      labels: {app: llamacpp}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: verify-model
+          image: ${PYTHON_BASE_REF}
+          command: ["python", "/fetch/fetch_model.py", "--verify-only"]
+          env:
+            - {name: MODEL_DIR, value: /models/granite-4.0-micro-gguf}
+            - {name: MANIFEST, value: /fetch/granite-4.0-micro-gguf.sha256}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: fetch, mountPath: /fetch, readOnly: true}
+      containers:
+        - name: llamacpp
+          image: ${LLAMACPP_REF}
+          # Flag and value as separate arguments: llama.cpp rewrites "_" to "-" inside a
+          # --flag=value token, which mangles the Q4_K_M file name
+          args: [--model, /models/granite-4.0-micro-gguf/granite-4.0-micro-Q4_K_M.gguf,
+                 --alias, granite-4.0-micro,
+                 --jinja,                      # the model's chat template, needed for tool calls
+                 --ctx-size, "16384", --threads, "12", --host, 0.0.0.0, --port, "8000"]
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+          resources:                   # threads = CPU limit: more threads than CPUs throttles
+            requests: {cpu: "12", memory: 6Gi}
+            limits: {cpu: "12", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: models}
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
+        - name: fetch
+          configMap: {name: model-fetch}
