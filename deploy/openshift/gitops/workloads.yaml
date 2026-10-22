@@ -10,7 +10,7 @@ metadata:
   namespace: openshift-gitops
 spec:
   description: AI gateway demo (docs/OPENSHIFT_MIGRATION.md)
-  sourceRepos: ["${GITOPS_REPO}"]
+  sourceRepos: ["${GITOPS_REPO}", "${APISIX_CHART_REPO}"]
   destinations:
     - {server: https://kubernetes.default.svc, namespace: "aigw-*"}
   clusterResourceWhitelist: []
@@ -42,3 +42,27 @@ spec:
       name: guard-policy
       namespace: aigw-ai
       jsonPointers: [/data]
+---
+# APISIX: the pinned chart with the k3d values plus the OpenShift ones from this repo
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aigw-apisix
+  namespace: openshift-gitops
+spec:
+  project: aigw
+  sources:
+    - repoURL: "${APISIX_CHART_REPO}"
+      chart: apisix
+      targetRevision: "${APISIX_CHART_VERSION}"
+      helm:
+        releaseName: apisix
+        valueFiles:
+          - $values/deploy/helm-values/apisix.yaml
+          - $values/deploy/openshift/apps/apisix/values.yaml
+    - repoURL: "${GITOPS_REPO}"
+      targetRevision: "${GITOPS_REVISION}"
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: aigw-gateway}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}

@@ -1,0 +1,39 @@
+# APISIX on OpenShift: layered over deploy/helm-values/apisix.yaml (the k3d values) by the
+# aigw-apisix Application. Only what differs is here.
+
+# The pinned APISIX_IMAGE@APISIX_DIGEST (REP-02; up.sh sets it with --set on k3d).
+# make openshift-check fails if it drifts from versions.env.
+image:
+  tag: "3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141"
+
+# Exposed by Routes (OS-04, workstream 2), not NodePorts
+service:
+  type: ClusterIP
+
+# The chart's ServiceMonitor is monitoring.coreos.com, the platform's API; ours is a
+# monitoring.rhobs one in the telemetry config (OS-01)
+metrics:
+  serviceMonitor:
+    enabled: false
+
+apisix:
+  admin:
+    allow:
+      # OVN-Kubernetes pod network (the cluster's 10.128.0.0/14), plus loopback for the
+      # deliberate port-forward (GW-07, rule 6)
+      ipList:
+        - 10.128.0.0/14
+        - 127.0.0.1/32
+
+externalEtcd:
+  host:
+    - http://etcd.aigw-gateway.svc.cluster.local:2379
+
+# A new pod's NetworkPolicy allow can lag its start (D-036): wait for etcd rather than
+# crash-loop once. up.sh adds the same init container on k3d with --set-json.
+extraInitContainers:
+  - name: wait-etcd
+    image: docker.io/apache/apisix:3.19.0-debian@sha256:9a7e45dc943fbf10ec916d1232bae4cda9302ae28a4696cfb83c2da01d261141
+    command: ["bash", "-c", "for i in $(seq 60); do (exec 3<>/dev/tcp/etcd.aigw-gateway.svc.cluster.local/2379) 2>/dev/null && exit 0; sleep 1; done; exit 1"]
+    resources: {requests: {cpu: "10m", memory: "16Mi"}, limits: {cpu: "100m", memory: "64Mi"}}
+    securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: ["ALL"]}}
