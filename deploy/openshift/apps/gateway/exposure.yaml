@@ -68,7 +68,13 @@ spec:
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
-metadata: {name: console, namespace: aigw-gateway}
+metadata:
+  name: console
+  namespace: aigw-gateway
+  # A story prompt runs a whole agent task in one request (the rogue agent: 35 s, longer if
+  # it first waits for earlier alerts to clear); the router's default is 30 s. APISIX's
+  # console route allows 600 s.
+  annotations: {haproxy.router.openshift.io/timeout: 10m}
 spec:
   subdomain: aigw-console
   to: {kind: Service, name: console-oauth}
@@ -101,6 +107,7 @@ spec:
             - --http-address=:8080
             - --https-address=
             - --upstream=http://apisix-gateway.aigw-gateway.svc.cluster.local:80
+            - --upstream-timeout=10m   # long story prompts; default 30s (see the Route)
             - --openshift-service-account=console-oauth
             - --cookie-secret-file=/etc/oauth/cookie-secret
             - --cookie-secure=true
