@@ -37,5 +37,12 @@ except Exception: print('blocked')" 2>/dev/null | tail -1)"
   if [[ "$got" == "$want" ]]; then log "netpol: $from -> $host:$port $got"
   else echo "netpol: $from -> $host:$port is ${got:-unknown}, expected $want" >&2; failed=1; fi
 done
+# The Loki Operator's public Route stays, but the router can't reach the gateway (D-063)
+loki_route="$(oc -n aigw-observability get route loki -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+if [[ -n "$loki_route" ]]; then
+  code="$(curl -sk -o /dev/null -w '%{http_code}' -m 20 "https://$loki_route/" || true)"
+  if [[ "$code" == 503 ]]; then log "netpol: router -> loki gateway blocked (Route answers 503)"
+  else echo "netpol: router -> loki gateway answered HTTP $code, expected 503" >&2; failed=1; fi
+fi
 (( failed == 0 )) || die "network policy check failed"
-log "network policies verified (${#checks[@]} flows)"
+log "network policies verified (${#checks[@]} flows, plus the Loki Route)"

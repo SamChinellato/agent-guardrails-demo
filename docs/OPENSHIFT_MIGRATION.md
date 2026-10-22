@@ -1,6 +1,6 @@
 # OpenShift migration plan
 
-**Status: all planning questions answered (OS-01 to OS-16) and all spikes done; implementation next, starting with workstream 1.** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
+**Status: the demo runs on OpenShift (workstreams 1–5 done, 2026-10-23); every beat of `DEMO_SCRIPT.md` verified through the console. The rest is on the [Future roadmap](#future-roadmap).** Branch `openshift-migration`. Questions are marked **Q-n**; answers are recorded under [Decisions](#decisions) and folded into the plan as they come in.
 
 ## Goal
 
@@ -151,6 +151,7 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 | Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
 | Prometheus, Alertmanager, evidence, APISIX Admin | none | `make ui UI=…` / `make admin-ui` port-forward |
+| Loki gateway | `loki-aigw-observability.<domain>`, created by the Loki Operator and not removable | Closed: NetworkPolicy `loki-gateway` admits no router traffic, so it answers 503 (D-063) |
 
 Hosts (from `subdomain`, so the same on any cluster): `aigw-gateway.<domain>` (only `/llm`, `/mcp`, `/agents`, `/demo`), `aigw-console.<domain>/console`, `aigw-killswitch.<domain>`. Verified 2026-10-22 (D-056).
 
@@ -241,8 +242,16 @@ Phased so the demo keeps working on k3d throughout: OpenShift is a second **targ
 3. **Telemetry.** **Done** (D-058): every signal under Argo CD with k3d's content (alert rules, dashboards, datasource UIDs); APISIX access logs to the LokiStack; Grafana behind OAuth at `aigw-grafana.<domain>`. Remaining for workstream 6: the evidence CLI's readers. The console's Grafana link and trace view ("Where it went") are done: it reads tenant `demo` through the Tempo gateway with its own pod token and the service CA, allowed by ClusterRoleBinding `aigw-console-tempo-reader` (`platform.sh`).
 4. **Policy hot reload.** **Done** (D-059): the `policy-sync` sidecar on both targets; k3d no longer sets `sync-frequency=5s`. OpenShift reloads in 1.4–2.9 s (was 60–90 s).
 5. **Live LLM.** **Done** (D-060): llama.cpp under Argo CD, always running; fresh installs start live; `make llm-mode MODE=mock|live` switches at runtime on both targets.
-6. **Operator tooling.** CLI and tests read Route URLs; `make status` / `logs` / `ui` on OpenShift.
-7. **Verification.** `make up` twice (idempotent), `make test` green on OpenShift, `make demo-all`, an evidence bundle that verifies, `verify-netpol.sh` passing on OVN-K. Record deviations as D-0xx in `DECISIONS.md`.
+6. **Operator tooling.** On the [Future roadmap](#future-roadmap).
+7. **Verification.** On the [Future roadmap](#future-roadmap), except `verify-netpol.sh`, which passes on OVN-K.
+
+## Future roadmap
+
+Deferred on 2026-10-23; the demo is presented from the console, which doesn't need these.
+
+1. **Operator tooling (workstream 6).** `make demo`, `make evidence`, `make admin-ui`, `make ui` and `make status` still act on k3d whatever `TARGET` says. They need the kubeconfig, `aigw-` namespaces and Route URLs from `lib.sh`. `make evidence` also needs readers for the Loki and Tempo gateways (service-account token, service CA, by port-forward), and must parse the guard's records from OTLP structured metadata: on OpenShift they aren't JSON log lines. `make ui UI=evidence` replaces the k3d viewer (OS-13).
+2. **Verification (workstream 7).** `make up TARGET=openshift` twice (the second changes nothing), `make test` and `make demo-all` against OpenShift, an evidence bundle that verifies, and a rebuild from scratch on a fresh TechZone cluster with one command (the reservation expires).
+3. **Argo CD on `main`.** Merge `openshift-migration` and point both Applications at `main` (OS-14): `GITOPS_REVISION=main scripts/openshift/gitops.sh`.
 
 ## Risks
 
