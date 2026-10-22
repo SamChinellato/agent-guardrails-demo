@@ -52,6 +52,7 @@ kind: GrafanaDatasource
 metadata: {name: prometheus, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   datasource:
     name: Prometheus
     uid: prometheus
@@ -69,6 +70,7 @@ kind: GrafanaDatasource
 metadata: {name: loki, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   valuesFrom:
     - targetPath: secureJsonData.httpHeaderValue1
       valueFrom: {secretKeyRef: {name: loki-reader-token, key: token}}
@@ -97,6 +99,7 @@ kind: GrafanaDatasource
 metadata: {name: tempo, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   valuesFrom:
     - targetPath: secureJsonData.httpHeaderValue1
       valueFrom: {secretKeyRef: {name: tempo-reader-token, key: token}}
@@ -130,6 +133,7 @@ kind: GrafanaDatasource
 metadata: {name: alertmanager, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   datasource:
     name: Alertmanager
     uid: alertmanager

@@ -5,6 +5,7 @@ kind: GrafanaDashboard
 metadata: {name: agent-behaviour, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   configMapRef: {name: dashboard-agent-behaviour, key: agent-behaviour.json}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
@@ -12,6 +13,7 @@ kind: GrafanaDashboard
 metadata: {name: ai-gateway-overview, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   configMapRef: {name: dashboard-ai-gateway-overview, key: ai-gateway-overview.json}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
@@ -19,6 +21,7 @@ kind: GrafanaDashboard
 metadata: {name: decision-trail, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   configMapRef: {name: dashboard-decision-trail, key: decision-trail.json}
 ---
 apiVersion: grafana.integreatly.org/v1beta1
@@ -26,4 +29,5 @@ kind: GrafanaDashboard
 metadata: {name: incident, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   configMapRef: {name: dashboard-incident, key: incident.json}

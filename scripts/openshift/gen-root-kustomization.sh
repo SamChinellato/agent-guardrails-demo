@@ -95,6 +95,7 @@ kind: GrafanaDashboard
 metadata: {name: $n, namespace: aigw-observability}
 spec:
   instanceSelector: {matchLabels: {dashboards: aigw}}
+  resyncPeriod: 1m   # Grafana's storage is an emptyDir: re-apply soon after a restart
   configMapRef: {name: dashboard-$n, key: $n.json}
 EOF
   done
