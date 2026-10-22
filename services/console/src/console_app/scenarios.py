@@ -112,8 +112,9 @@ async def set_policy(overrides: dict) -> None:
     if current.get("version") == want:
         return
     token = (SA / "token").read_text()
+    namespace = (SA / "namespace").read_text().strip()   # ai on k3d, aigw-ai on OpenShift
     async with httpx.AsyncClient(verify=str(SA / "ca.crt"), timeout=10) as k8s:
-        r = await k8s.patch("https://kubernetes.default.svc/api/v1/namespaces/ai/configmaps/guard-policy",
+        r = await k8s.patch(f"https://kubernetes.default.svc/api/v1/namespaces/{namespace}/configmaps/guard-policy",
                             json={"data": {"policy.yaml": text}},
                             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/merge-patch+json"})
         r.raise_for_status()
