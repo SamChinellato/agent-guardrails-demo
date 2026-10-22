@@ -26,7 +26,10 @@ def s3_bundle():
     incident = re.search(r"INCIDENT=(INC-[0-9a-f-]+)", out).group(1)
     code, out = make("evidence", f"INCIDENT={incident}")
     assert code == 0, out
-    return ROOT / "evidence" / incident
+    yield ROOT / "evidence" / incident
+    # S3 leaves its policy (result scanning in monitor) and a tripped executor behind;
+    # later modules expect every check in enforce
+    make("reset", timeout=200)
 
 
 def test_bundle_contents(s3_bundle):
