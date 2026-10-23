@@ -12,4 +12,5 @@ resources:
   - collector.yaml
   - grafana.yaml
   - grafana-oauth.yaml
+  - prometheus-oauth.yaml
   - dashboards.yaml        # generated

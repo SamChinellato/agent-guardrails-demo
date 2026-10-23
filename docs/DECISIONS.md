@@ -760,3 +760,13 @@ Every demo Route opens its page at the host root. Grafana and the kill-switch pa
 - **Root**: `/` on both serves a one-line page from ConfigMap `route-landing` that forwards to the app (`file://` upstream). Any other path is a 404 from the proxy.
 
 Tested before rollout with the same oauth-proxy (public origin build, auth skipped) against port-forwards of the real services: the landing pages, `/ui` → `/ui/`, the dashboard assets, `/apisix/admin` (401 without a key, as before), and `/console/` with the architecture image.
+
+## D-065: Prometheus on a Route behind OAuth (deviation from OS-04)
+
+OS-04 kept Prometheus to port-forward. At the presenter's request it now also has a Route, `aigw-prometheus.<domain>`, so the alert going pending then firing in beat 5 can be shown without a terminal. It is built like Grafana's (`deploy/openshift/telemetry/prometheus-oauth.yaml`, under Argo CD):
+
+- an edge-TLS Route
+- the cluster's oauth-proxy, admitting the same users as the console and Grafana (`get` Services in `aigw-gateway`)
+- the existing `oauth-proxy-cookie` Secret
+
+Prometheus has no login of its own. The MonitoringStack leaves its admin and lifecycle APIs off, so the Route gives a read-only view: queries, targets, rules and alerts. Alertmanager stays port-forward only. Its UI can create silences, and a silence would hide the alert that drives the kill switch.

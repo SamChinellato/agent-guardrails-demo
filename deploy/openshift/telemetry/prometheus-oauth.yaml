@@ -1,0 +1,73 @@
+# Prometheus at aigw-prometheus.<domain> (D-065): the cluster's oauth-proxy in front, admitting the
+# same users as the console and Grafana (get Services in aigw-gateway). Prometheus has no auth
+# of its own and its admin API is off, so this is a read-only view. Same shape as grafana-oauth.yaml.
+# aigw-observability has no default-deny policy; the cookie secret is gen-secrets.sh's.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-oauth
+  namespace: aigw-observability
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.prometheus: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"prometheus"}}'
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus-oauth, namespace: aigw-observability, labels: {app: prometheus-oauth}}
+spec:
+  selector: {app: prometheus-oauth}
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata: {name: prometheus, namespace: aigw-observability}
+spec:
+  subdomain: aigw-prometheus
+  to: {kind: Service, name: prometheus-oauth}
+  port: {targetPort: http}
+  tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-oauth
+  namespace: aigw-observability
+  labels: {app: prometheus-oauth}
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"oauth-proxy:v4.4","namespace":"openshift"},"fieldPath":"spec.template.spec.containers[?(@.name==\"oauth-proxy\")].image"}]'
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: prometheus-oauth}}
+  template:
+    metadata: {labels: {app: prometheus-oauth}}
+    spec:
+      serviceAccountName: prometheus-oauth
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: oauth-proxy
+          image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
+          args:
+            - --provider=openshift
+            - --http-address=:8080
+            - --https-address=
+            - --upstream=http://aigw-prometheus.aigw-observability.svc.cluster.local:9090
+            - --openshift-service-account=prometheus-oauth
+            - --cookie-secret-file=/etc/oauth/cookie-secret
+            - --cookie-secure=true
+            - --pass-basic-auth=false   # else the OpenShift user arrives as a failed Basic login upstream
+            - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /oauth/healthz, port: http}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: cookie, mountPath: /etc/oauth, readOnly: true}
+      volumes:
+        - name: cookie
+          secret: {secretName: oauth-proxy-cookie}

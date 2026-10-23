@@ -3,7 +3,8 @@
 # needs no user workload monitoring. It selects ServiceMonitors, PodMonitors and
 # PrometheusRules labelled app.kubernetes.io/part-of=ai-gateway-demo, in the namespaces
 # carrying the same label. Prometheus: aigw-prometheus:9090; Alertmanager:
-# aigw-alertmanager:9093 (both reached by port-forward, OS-04).
+# aigw-alertmanager:9093. Prometheus is also at aigw-prometheus.<domain> behind OAuth
+# (prometheus-oauth.yaml, D-065); Alertmanager by port-forward (OS-04).
 apiVersion: monitoring.rhobs/v1alpha1
 kind: MonitoringStack
 metadata:

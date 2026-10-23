@@ -151,7 +151,8 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 | Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |
 | APISIX dashboard | `aigw-apisix.<domain>` edge TLS → oauth-proxy → Admin API `/ui/` and `/apisix/` only; `/` forwards to `/ui/` (D-057, D-064) | OpenShift OAuth, then the viewer or admin key as today |
-| Prometheus, Alertmanager, evidence | none | `make ui UI=…` port-forward |
+| Prometheus | `aigw-prometheus.<domain>` edge TLS → oauth-proxy → Prometheus (D-065) | OpenShift OAuth; read-only (no admin API) |
+| Alertmanager, evidence | none | `make ui UI=…` port-forward |
 | Loki gateway | `loki-aigw-observability.<domain>`, created by the Loki Operator and not removable | Closed: a router allowlist that admits no client (`loki-route.sh`), plus NetworkPolicy `loki-gateway` (D-063) |
 
 Hosts (from `subdomain`, so the same on any cluster): `aigw-gateway.<domain>` (only `/llm`, `/mcp`, `/agents`, `/demo`), `aigw-console.<domain>/console`, `aigw-killswitch.<domain>`. Verified 2026-10-22 (D-056).
@@ -296,7 +297,7 @@ None. Q-16 is answered by OS-16.
 - **OS-01 (Q-1) Telemetry: Red Hat operators.** COO `MonitoringStack`, Tempo Operator, Loki Operator, Red Hat build of OpenTelemetry; Grafana Operator (community) for dashboards. Chosen over keeping the Helm charts for supportability. Nothing is registered with platform monitoring.
 - **OS-02 (Q-2) Images: in-cluster `BuildConfig`s** into ImageStreams in a build namespace; workloads pull by digest.
 - **OS-03 (Q-3) Live LLM: vLLM on the cluster (CPU) with Granite 4.0 Micro**, instead of the host Ollama. Outputs will differ from the 4-bit Ollama build. *Superseded by OS-16.*
-- **OS-04 (Q-4) Exposure: demo UIs on edge-TLS Routes behind OpenShift OAuth proxy**; the gateway API Route stays key-auth only; Prometheus, Alertmanager, evidence and the Admin API by port-forward.
+- **OS-04 (Q-4) Exposure: demo UIs on edge-TLS Routes behind OpenShift OAuth proxy**; the gateway API Route stays key-auth only; Prometheus, Alertmanager, evidence and the Admin API by port-forward. *Since amended: the APISIX dashboard (D-057) and Prometheus (D-065) have OAuth Routes too.*
 - **OS-05 (Q-5) Policy hot reload: `k8s-sidecar` in the guard pod**, writing the ConfigMap to a shared `emptyDir` the guard already polls. Guard code unchanged; only the sidecar holds an API token. A `GuardPolicy` CRD is a possible later phase.
 - **OS-06 (Q-6) Pod security: `restricted-v2` with arbitrary UIDs.** Fixed UIDs come out of the OpenShift overlay; exceptions get `nonroot-v2` on their own service account and are recorded.
 - **OS-07 (Q-9) Both targets stay supported**, `TARGET=k3d|openshift`, default `k3d`.

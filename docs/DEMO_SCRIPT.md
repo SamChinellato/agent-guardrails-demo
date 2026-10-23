@@ -19,7 +19,7 @@
 | Grafana | `http://<host>:3001` | `https://aigw-grafana.<domain>` (OpenShift login) | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
 | Kill switch | `http://<host>:8090` | `https://aigw-killswitch.<domain>` (OpenShift login) | Token: `cat .secrets/killswitch-operator-token` |
 | APISIX dashboard | `make admin-ui` (`http://127.0.0.1:9180/ui/`) | `https://aigw-apisix.<domain>` (OpenShift login, then the viewer key) | Optional: the gateway's routes and plugins |
-| Prometheus | `http://<host>:9090/alerts` | not exposed; `oc -n aigw-observability port-forward svc/aigw-prometheus 9090` | Optional for beat 5: watch the alert go pending, then firing |
+| Prometheus | `http://<host>:9090/alerts` | `https://aigw-prometheus.<domain>/alerts` (OpenShift login) | Optional for beat 5: watch the alert go pending, then firing |
 | Evidence | `http://<host>:8099` | not yet on OpenShift ([future roadmap](OPENSHIFT_MIGRATION.md#future-roadmap)) | Reports from `make evidence` |
 
 On OpenShift the live model is llama.cpp in the cluster (a fresh install starts in live mode; `make llm-mode MODE=mock|live TARGET=openshift` switches). The `make` commands below (`make demo`, `make evidence`, `make admin-ui`) still work against k3d only; on OpenShift use the console and the kill-switch panel.
