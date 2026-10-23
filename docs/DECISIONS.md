@@ -770,3 +770,18 @@ OS-04 kept Prometheus to port-forward. At the presenter's request it now also ha
 - the existing `oauth-proxy-cookie` Secret
 
 Prometheus has no login of its own. The MonitoringStack leaves its admin and lifecycle APIs off, so the Route gives a read-only view: queries, targets, rules and alerts. Alertmanager stays port-forward only. Its UI can create silences, and a silence would hide the alert that drives the kill switch.
+
+## D-066: Documentation set: a front-door README and guides in docs/
+
+At the operator's request (2026-10-23), the system is documented for engineers evaluating it and for operators, as a README plus guides. The README says what the demo is and shows, gives the k3d quick start and the console prompts to try, and maps the docs. The guides describe the system as built, not as specified, and link the decisions that explain it:
+
+| Guide | Covers |
+| --- | --- |
+| `ARCHITECTURE.md` | Components, request flows F1–F7, where decisions are made, identity, the kill switch, network isolation, config as code, the two targets, the repository map |
+| `DETECTION.md` (existing) | The six detection layers |
+| `OBSERVABILITY.md` | Signals and their paths, decision records, metrics, alerts, dashboards, evidence bundles |
+| `DEPLOYMENT.md` | Installing on k3d and OpenShift, what each installer does, updating, addresses, removing |
+| `RUNBOOK.md` | Health, the kill switch, investigating, policy and LLM changes, resetting, troubleshooting |
+| `CONFIGURATION.md` | `gateway/`, the guard policy schema, version pins, secrets, settings, `make` targets with their OpenShift support |
+
+`ARCHITECTURE.md` and `RUNBOOK.md` replace the "to be written in P7" placeholders. Diagrams are Mermaid, so they live in the text beside what they describe, plus the two generated architecture images. Every Mermaid block was rendered with mermaid-cli 11.4.2 to check its syntax, and every relative link and anchor was checked. Where a `make` target doesn't support OpenShift yet, the docs say so and give the OpenShift way.
