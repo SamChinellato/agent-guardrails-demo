@@ -785,3 +785,23 @@ At the operator's request (2026-10-23), the system is documented for engineers e
 | `CONFIGURATION.md` | `gateway/`, the guard policy schema, version pins, secrets, settings, `make` targets with their OpenShift support |
 
 `ARCHITECTURE.md` and `RUNBOOK.md` replace the "to be written in P7" placeholders. Diagrams are Mermaid, so they live in the text beside what they describe, plus the two generated architecture images. Every Mermaid block was rendered with mermaid-cli 11.4.2 to check its syntax, and every relative link and anchor was checked. Where a `make` target doesn't support OpenShift yet, the docs say so and give the OpenShift way.
+
+## D-067: Interact Gateway integration starts in front of the existing MCP routes
+
+At the operator's request (2026-10-26), the demo is to be integrated with IBM DataPower Interact Gateway (IDIG) 12.1.1.2. IDIG is installed in `idig-system` on a second TechZone cluster (`itz-lvn018`, tok04, OpenShift 4.20). It was reviewed read-only.
+
+**How IDIG works.** API Studio publishes a project (a zip, `POST /idig-broker/publish`). The broker generates Nano Gateway CRs, labelled `managed-by: idig`:
+
+- a `Runtime` in `mcpServer` mode per MCP server, holding plans that select tools, rate limits and a Valkey-backed block service, and sending traces only to IDIG's analytics collector
+- an `MCPTool` per tool, each with its own policy assembly
+- an `Assembly` and an `HTTPRoute` on the `*.nanogw` wildcard Gateway
+
+The operator's policy vocabulary includes `extractIdentity`, `authenticate`, `authorize`, `luaScript`, `invoke`, `block`, `redact`, `setToolContent` and `rateLimit`, and a `JWTProvider` CRD exists. An existing MCP server is registered as an "external MCP server", and its sequence calls it with `MCPInvoke`.
+
+**The decision: the first step uses the demo as it is.** IDIG registers `aigw-gateway.<syd05 domain>/mcp/docs` and `/mcp/actions`, the existing public Route behind APISIX key-auth, and its sequence sets the agent's `apikey` header before `MCPInvoke`. The guard, the kill switch and our telemetry keep working unchanged behind IDIG, and nothing in this repository changes. Moving the allowlists into plans, calling the guard from Lua, and a data-plane kill-switch check are later steps. They depend on things not yet proven: whether Lua is allowed in an MCP server's sequence, whether `tools/list` is filtered by plan, and how `MCPInvoke` handles headers.
+
+**Checked on 2026-10-26 against the demo.** `initialize` returns plain JSON with no session ID (the servers are stateless). `tools/list` works with the agent's key. The wrong agent's key gets 403, and no key gets 401. `read_document supplier-07` comes back quarantined by the guard.
+
+**Found, and blocking the publish.** IDIG's `imageRegistry` (`tz-docker-registry.duckdns.org/kskhong`) is unreachable from the cluster. Every new MCP server pod fails to pull its image, which is why the sample `transactions` server has been stuck in ImagePullBackOff. The registry must be fixed or mirrored before a publish can run.
+
+The steps are in [IDIG_INTEGRATION.md](IDIG_INTEGRATION.md).

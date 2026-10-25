@@ -59,6 +59,7 @@ Under each reply, **Decision trail** shows why the gateway decided what it did. 
 | [Runbook](docs/RUNBOOK.md) | Health checks, the kill switch, investigating, policy and LLM changes, troubleshooting |
 | [Configuration](docs/CONFIGURATION.md) | Gateway config, guard policy, version pins, secrets, settings, `make` targets |
 | [Demo script](docs/DEMO_SCRIPT.md) | The presenter's talk track, beat by beat |
+| [Interact Gateway integration](docs/IDIG_INTEGRATION.md) | Putting IBM DataPower Interact Gateway in front of the MCP tools, step by step |
 | [Decisions](docs/DECISIONS.md) | Why things are the way they are: every deviation, finding and choice, D-001 onwards |
 
 Background: [SPEC.md](SPEC.md) is the original specification, [REQUIREMENTS_STATUS.md](docs/REQUIREMENTS_STATUS.md) tracks each requirement and the test that proves it, and [OPENSHIFT_MIGRATION.md](docs/OPENSHIFT_MIGRATION.md) records the move to OpenShift and its roadmap.
