@@ -76,11 +76,13 @@ ACTIONS = {
                       "agents may only change a record's status and notes",
                       "tried to change a protected record"),
 }
-ALERTS = {  # alert -> (title, what the agent was doing, with {n} from the alert's summary)
-    "AgentToolCallSpike": ("stuck in a loop of tool calls",
-                           "was making {n} tool calls a minute, far more than any normal task"),
-    "TokenBurn": ("using far too many tokens", "was using {n} tokens a minute, far more than any normal task"),
-    "GuardBlockSpike": ("kept sending blocked requests", "kept sending requests that the gateway blocked"),
+ALERTS = {  # alert -> what the agent was doing, with {n} from the alert's summary, and without it.
+            # Every alert's title is "anomalous behaviour detected"; this says which behaviour (D-069)
+    "AgentToolCallSpike": ("was making {n} tool calls a minute, far more than any normal task",
+                           "was calling tools far faster than any normal task"),
+    "TokenBurn": ("was using {n} tokens a minute, far more than any normal task",
+                  "was using the model far more than any normal task"),
+    "GuardBlockSpike": ("kept sending requests that the gateway blocked",) * 2,
 }
 
 
@@ -102,9 +104,8 @@ def describe_trip(e: dict, still: bool = False) -> tuple[str, str]:
     if e["source"] == "alertmanager":
         alert, _, summary = e["reason"].partition(":")
         n = re.search(r"(\d+)", summary)
-        title, what = ALERTS.get(alert, (f"the {alert} alert fired", f"triggered the {alert} alert"))
-        if "{n}" in what:
-            what = what.format(n=f"{int(n.group(1)):,}") if n else what.split(" {n}")[0] + " far more than any normal task"
+        with_n, without_n = ALERTS.get(alert, (f"triggered the {alert} alert",) * 2)
+        title, what = "anomalous behaviour detected", with_n.format(n=f"{int(n.group(1)):,}") if n else without_n
         return (f"{subject} {suspended}: {title}",
                 f"{who.capitalize()} {what}, so the circuit breaker suspended it automatically ({ms}).")
     stopped = ("still suspended" if still else "suspended") if is_agent else ("still stopped" if still else "stopped")
@@ -264,7 +265,8 @@ async def coastal_cascade(text: str) -> list[dict]:
 
 async def meridian(text: str) -> list[dict]:
     await preconditions()
-    return [await task(text, "meridian:scripted")]
+    # Only the withheld notice is shown, not the agent's answer (D-069)
+    return [{**await task(text, "meridian:scripted"), "withheld_only": True}]
 
 
 async def rogue_chat(text: str) -> list[dict]:

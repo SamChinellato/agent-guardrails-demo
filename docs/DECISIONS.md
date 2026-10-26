@@ -827,9 +827,9 @@ At the operator's request (2026-10-27):
 | Cause | Title |
 | --- | --- |
 | Guard, a forbidden tool or argument | "Executor suspended: it tried to export customer data" (or "to email outside Acme", "to change a protected record") |
-| Alert `AgentToolCallSpike` | "Researcher suspended: stuck in a loop of tool calls" |
-| Alert `TokenBurn` | "Researcher suspended: using far too many tokens" |
-| Alert `GuardBlockSpike` | "Researcher suspended: kept sending blocked requests" |
+| Any alert (`AgentToolCallSpike`, `TokenBurn`, `GuardBlockSpike`) | "Researcher suspended: anomalous behaviour detected". The text below it says which behaviour |
 | Operator | "Executor suspended by an operator", "Everything stopped by an operator" |
 
-A message sent while an agent is already suspended is explained the same way, worded with "still" ("Researcher still suspended: stuck in a loop of tool calls") and adding that it lasts until a new chat. When the gateway's 503 reaches the console, its incident ID names the trip. Usually it doesn't: the agent meets the 503 on its own LLM or tool call and answers 200 with `halted_by_kill_switch`, so the console takes the newest trip of an engaged scope covering the agent (its own, `tools` or `global`). The agent's canned "Halted: …" reply is no longer shown as an answer, since the notice explains it. If nothing can be found, the old generic notice is shown.
+A message sent while an agent is already suspended is explained the same way, worded with "still" ("Researcher still suspended: anomalous behaviour detected") and adding that it lasts until a new chat. When the gateway's 503 reaches the console, its incident ID names the trip. Usually it doesn't: the agent meets the 503 on its own LLM or tool call and answers 200 with `halted_by_kill_switch`, so the console takes the newest trip of an engaged scope covering the agent (its own, `tools` or `global`). The agent's canned "Halted: …" reply is no longer shown as an answer, since the notice explains it. If nothing can be found, the old generic notice is shown.
+
+**Fewer words on two notices** (2026-10-27). The blocked-phrase notice no longer ends "Try rephrasing it." For the poisoned-document story prompt (Meridian), the console shows only *A document was withheld*, without the agent's answer, and that notice no longer says the answer is based on the rest. Other replies that touched a withheld document, such as an upload in live chat, still show their answer.

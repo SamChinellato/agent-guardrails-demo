@@ -57,7 +57,7 @@ Press **New chat** in the console before you start, and turn on **Monitoring** i
 
 **Type:** *Review the Meridian Data Services document*
 
-**Show:** the *A document was withheld* notice and the agent's reply. In **Monitoring**, the researcher-to-documents link has a red diamond.
+**Show:** the *A document was withheld* notice, on its own: the assistant gives no answer. In **Monitoring**, the researcher-to-documents link has a red diamond.
 
 **Say:** "Attacks don't only come from users. This supplier document hides instructions aimed at AI assistants. The gateway scans what tools return, too, and withheld it."
 
@@ -99,7 +99,7 @@ Click **Decision details** under the reply. Grafana opens the **Decision trail**
 
 **Type:** *Keep re-reading every supplier document until I tell you to stop*
 
-**Show:** Grafana **Agent Behaviour**: tool calls and tokens climb steeply. After about 20 s the console's notice says the researcher was making far more tool calls a minute than any normal task, so the gateway suspended it. **Monitoring** shows dozens of calls to the documents tool and the LLM API, and the last one refused by the kill switch.
+**Show:** Grafana **Agent Behaviour**: tool calls and tokens climb steeply. After about 20 s the console's notice, *Researcher suspended: anomalous behaviour detected*, says it was making far more tool calls a minute than any normal task, so the circuit breaker suspended it. **Monitoring** shows dozens of calls to the documents tool and the LLM API, and the last one refused by the circuit breaker.
 
 **Say:** "Nothing malicious here, just an agent stuck in a loop. The gateway measures what each agent does. When the researcher started making tool calls far faster than any real task, an alert fired and the kill switch stopped that agent, and only that agent."
 

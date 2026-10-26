@@ -220,7 +220,7 @@ function blockedNotice(d) {
       " Try asking an ordinary question.");
   }
   return notice("Blocked by the gateway",
-    "Your message contains a phrase used in known prompt-injection attacks, so it never reached the assistant. Try rephrasing it.");
+    "Your message contains a phrase used in known prompt-injection attacks, so it never reached the assistant.");
 }
 // The title says what suspended the agent when the console could find out (D-069)
 const suspendedNotice = d => d && d.title ? notice(d.title, d.text) : notice("Assistant suspended",
@@ -259,7 +259,7 @@ function usedLine(events) {
 function withheldNotice(events) {
   if (!(events || []).some(e => e.outcome === "quarantined")) return null;
   return notice("A document was withheld",
-    "One document contains hidden instructions aimed at AI assistants, so the gateway kept it from the assistant. The answer is based on the rest.");
+    "One document contains hidden instructions aimed at AI assistants, so the gateway kept it from the assistant.");
 }
 function deniedNotice(events) {
   const denied = (events || []).filter(e => e.outcome === "denied");
@@ -298,7 +298,9 @@ function render(ex, d) {
   ex.suspended = trips.map(s => s.scope).filter(Boolean);
   for (const st of steps.filter(s => s.kind === "agent")) {
     const halted = st.status === "halted_by_kill_switch";
-    if (!halted) {  // a halted agent's reply is only "Halted: ..."; the notice below says why
+    // A halted agent's reply is only "Halted: ..."; the notice below says why. The poisoned-document
+    // story shows the withheld notice alone, with no answer (D-069)
+    if (!halted && !st.withheld_only) {
       const a = el("div", "assistant");
       a.append(richText(el("div", "answer"), st.reply || "(no reply)"));
       box.append(a);
@@ -308,7 +310,7 @@ function render(ex, d) {
     if (halted && !trips.length) box.append(suspendedNotice(st));
     for (const t of trips) box.append(notice(t.title || "The gateway suspended an agent", t.text));
     box.append(metaLine(ex, usedLine(st.events)));
-    if (st.reply) history.push({ role: "assistant", content: st.reply });
+    if (st.reply && !st.withheld_only) history.push({ role: "assistant", content: st.reply });
   }
 }
 
