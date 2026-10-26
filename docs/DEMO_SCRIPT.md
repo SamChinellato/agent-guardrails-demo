@@ -6,9 +6,10 @@
 - **You** are a procurement analyst at Acme. You chat with the assistant in the console.
 - The **researcher agent** reviews supplier performance documents and answers your questions.
 - The **executor agent** carries out routine follow-ups the researcher hands it: updating supplier records and emailing internal teams.
-- The **AI gateway** is the only way either agent reaches the LLM API, the MCP tools (supplier documents; records, email and export) or the other agent. A **guard** inside it decides what's allowed, and a **kill switch** can stop one agent or everything.
+- The **AI gateway** is the only way either agent reaches the LLM API, the MCP tools (supplier documents; records, email and export) or the other agent. It has two sides: an **API gateway** for the model and the agents, and an **MCP gateway** for the tools. A **guard** behind both decides what's allowed, and a **kill switch** can stop one agent or everything.
+- **Interact Gateway** (IBM DataPower Interact Gateway, optional beat 6) is a dedicated MCP gateway in front of the tools, for callers outside the demo. It enforces its own MCP policy, and still asks the demo's guard.
 
-**Timing:** about 15 minutes.
+**Timing:** about 15 minutes, plus 3–5 for beat 6.
 
 ## Before you start
 
@@ -21,6 +22,8 @@
 | APISIX dashboard | `make admin-ui` (`http://127.0.0.1:9180/ui/`) | `https://aigw-apisix.<domain>` (OpenShift login, then the viewer key) | Optional: the gateway's routes and plugins |
 | Prometheus | `http://<host>:9090/alerts` | `https://aigw-prometheus.<domain>/alerts` (OpenShift login) | Optional for beat 5: watch the alert go pending, then firing |
 | Evidence | `http://<host>:8099` | not yet on OpenShift ([future roadmap](OPENSHIFT_MIGRATION.md#future-roadmap)) | Reports from `make evidence` |
+| API Studio (Interact Gateway) | — | `https://idig.apps.itz-lvn018.infra01-lb.tok04.techzone.ibm.com` (second cluster, tok04) | Beat 6: the `supplier-docs` MCP server and its policy |
+| Developer Portal | — | `https://devportal.apps.itz-lvn018.infra01-lb.tok04.techzone.ibm.com` | Beat 6, live: subscribe to `supplier-docs` and get a credential |
 
 On OpenShift the live model is llama.cpp in the cluster (a fresh install starts in live mode; `make llm-mode MODE=mock|live TARGET=openshift` switches). The `make` commands below (`make demo`, `make evidence`, `make admin-ui`) still work against k3d only; on OpenShift use the console and the kill-switch panel.
 
@@ -32,7 +35,7 @@ Press **New chat** in the console before you start, and turn on **Monitoring** i
 
 **Show:** the architecture diagram.
 
-**Say:** "This is Acme's procurement assistant. I'm an analyst; I chat with it here. The researcher agent reads supplier reviews; the executor acts on them. Notice that neither agent can reach anything directly: the model, the tools, even each other are all reached through the gateway. That one point is where we identify who's calling, check what they're asking for, record it, and stop it if we have to. Red lines are how we stop things; grey is what we record."
+**Say:** "This is Acme's procurement assistant. I'm an analyst; I chat with it here. The researcher agent reads supplier reviews; the executor acts on them. Notice that neither agent can reach anything directly: the model, the tools, even each other are all reached through the gateway. It has two sides. The API gateway, in blue, carries my requests, the hand-off between the agents and every call to the model. The MCP gateway, in green, carries every tool call. Both ask the same guard, so one set of rules and one record covers both. That's where we identify who's calling, check what they're asking for, record it, and stop it if we have to. Red lines are how we stop things; grey is what we record."
 
 ## 1. Normal work
 
@@ -99,6 +102,59 @@ Click **Decision details** under the reply. Grafana opens the **Decision trail**
 **Show:** Grafana **Agent Behaviour**: tool calls and tokens climb steeply. After about 20 s the console's notice says the researcher was making far more tool calls a minute than any normal task, so the gateway suspended it. **Monitoring** shows dozens of calls to the documents tool and the LLM API, and the last one refused by the kill switch.
 
 **Say:** "Nothing malicious here, just an agent stuck in a loop. The gateway measures what each agent does. When the researcher started making tool calls far faster than any real task, an alert fired and the kill switch stopped that agent, and only that agent."
+
+Press **New chat** before beat 6, so the researcher isn't still suspended.
+
+## 6. Optional: a dedicated MCP gateway (Interact Gateway)
+
+Interact Gateway publishes the demo's documents tool to callers outside the demo: an MCP host such as VS Code, another team's agent. Its MCP policy runs first; then the call comes through the demo's MCP gateway and guard, as in every other beat. How it's set up is in [IDIG_INTEGRATION.md](IDIG_INTEGRATION.md).
+
+**Status.** Publishing is blocked on the Interact Gateway cluster until its image registry is fixed (D-067), so the **live** part below can't be run yet. The **policy** part works today.
+
+### The policy (API Studio)
+
+**Show:** API Studio, the `supplier-docs` MCP server, then its policy sequence, `policy-sequence-1yquu`. Walk through it top to bottom:
+
+| Step | Policy | Say |
+| --- | --- | --- |
+| 1 | `remove-caller-auth` | "Whatever credential the caller brought to Interact Gateway stops here. It is never sent on." |
+| 2 | `set-apikey` | "Interact Gateway signs in to our gateway as the researcher, with a key the caller never sees. That's credential mediation: callers get a subscription; they never hold the key to the tool." |
+| 3 | `retry-docs` | "If the network drops, it retries twice. Not on a 503: that's our kill switch, and a stopped agent stays stopped." |
+| 4 | `cache-docs` | "The same document asked for twice in a minute is answered from the cache, keyed on the tool and its arguments." |
+| 5 | `mcp-invoke` | "Then it calls the tool, through our MCP gateway, where the guard checks it as before." |
+| | `quota`, `telemetry` | "A rate limit per subscription, and its own analytics." |
+
+**Show:** `policy-sequence-guarded-1yquu`, the target design, and the two `guard-check` Lua policies. Then, in the workshop repository, `lua-modules/guard-lib/guard.lua`.
+
+**Say:** "This is where it's going: Interact Gateway calling our guard itself, before and after the tool. The Lua policy is two lines; the logic lives in git, owned by whoever owns the guard, and is loaded into the gateway as a module. The gateway can't download and run code at run time; its Lua sandbox won't allow it. Interact Gateway enforces; our guard decides. One set of rules and one decision record, whichever gateway the call came through." This part is a design, not running yet.
+
+### Live, once publishing works
+
+**Do:** in the Developer Portal, subscribe an application to `supplier-docs`, then call the published endpoint (its host is in the publish result) from a terminal, or with **Try out** in the portal:
+
+```bash
+IDIG=https://<supplier-docs host>/1.0     # from the publish result
+call() { curl -sk -H "<credential header>: <value>" -H 'content-type: application/json' \
+              -H 'accept: application/json, text/event-stream' "$IDIG" \
+              -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"read_document\",\"arguments\":{\"id\":\"$1\"}}}"; }
+call supplier-01     # an ordinary review
+call supplier-07     # Meridian, the poisoned document
+```
+
+| Do | Show | Say |
+| --- | --- | --- |
+| `call supplier-01` | The Northwind Packaging review, and the guard's `allow` for `researcher` (see *Finding the call in Grafana*) | "A caller who's never seen our key, through two gateways, with one decision recorded." |
+| `call supplier-01` again, within a minute | It returns at once, and no new decision appears | "Answered from Interact Gateway's cache. It never reached the tool." |
+| `call supplier-07` | "Content quarantined by policy (decision dec-…)", and that decision, a `block` of `mcp.tool_result_injection`, in the Decision trail | "The same poisoned document as beat 3. Interact Gateway passed it on, and our guard caught it, exactly as it did for our own agent." |
+| Trip `agent:researcher` in the kill-switch panel, then `call supplier-02` (not cached) | The call fails with `kill_switch_engaged` and isn't retried. Whether Interact Gateway passes the 503 on as it is, or rewraps it, is still to be seen | "Our kill switch reaches callers outside the demo too, because their calls end at our gateway. Reset it in the panel." |
+
+**Finding the call in Grafana.** These calls don't come from the console, so there's no **Decision details** link to click; the **Decision trail** needs the call's trace ID in its **Trace** box.
+
+1. Sign in to Grafana as `admin` (password: `cat .secrets/grafana-admin-password`); the anonymous viewer can't use Explore.
+2. In **Explore**, with the Loki data source, run `{service_name="guard"} | event="guard_decision" | decision_id="dec-…"`, with the decision ID from the quarantined reply. For an allowed call, which has no ID in its reply, use `agent="researcher"` instead and take the newest line.
+3. Copy that line's `trace_id` into the Decision trail's **Trace** box.
+
+Every call through Interact Gateway shows up as `researcher`, because that's the key Interact Gateway signs in with. Telling its callers apart is the first of the next steps in [IDIG_INTEGRATION.md](IDIG_INTEGRATION.md#next-steps).
 
 **Close:** "Every request was identified, checked against policy, recorded in one trace, and the response to a problem was automatic, scoped and verified. That's what putting a gateway in front of agents buys you."
 
