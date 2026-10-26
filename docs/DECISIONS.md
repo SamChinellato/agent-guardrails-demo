@@ -820,7 +820,7 @@ At the operator's request (2026-10-26):
 
 At the operator's request (2026-10-27):
 
-**Circuit breaker, not kill switch, in the console.** Everything the person chatting sees calls it the circuit breaker: the stop notices, the **New chat** tooltip, the Monitoring panel's node and its lines, and the story steps. Open means stopped and closed means running, as with a real breaker. Only the words changed: the service, its API, the control panel, Grafana, alerts and logs still say kill switch. In the architecture diagram, the same component is the **policy engine**, and the guard's rules box is now **policy rules**, so the two don't share a name.
+**Circuit breaker, not kill switch, in the console.** Everything the person chatting sees calls it the circuit breaker: the stop notices, the **New chat** tooltip, the Monitoring panel's node and its lines, and the story steps. Open means stopped and closed means running, as with a real breaker. Only the words changed: the service, its API, the control panel, Grafana, alerts and logs still say kill switch. The architecture diagram calls it the circuit breaker too, and the guard's box keeps its name, **policy engine**. (For a short while the diagram called the kill switch the policy engine, and the guard's box was renamed policy rules to avoid two of the same name; the console's wording replaced that.)
 
 **Specific titles.** A stop notice used to say "The gateway suspended an agent" or "Assistant suspended", whatever had happened. The title now names the cause, built by the console from the kill switch's trip event (`describe_trip`):
 

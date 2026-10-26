@@ -4,7 +4,7 @@ The gateway and the models are named by capability (D-045); the platform pieces 
 Prometheus, Loki, Tempo, Grafana) by name (D-048). The gateway is one deployment, drawn as the two
 gateways its routes form (D-068): an API gateway for the model and the agents (/llm, /agents)
 and an MCP gateway for the tools (/mcp), each checking its traffic with the same guard.
-Bold blue: requests, all through a gateway. Red: control (the policy engine stopping agents or tools). Dashed grey: telemetry.
+Bold blue: requests, all through a gateway. Red: control (the circuit breaker stopping agents or tools). Dashed grey: telemetry.
 
 TARGET=k3d (default) draws the laptop demo: k3d, the LLM on the host. TARGET=openshift draws
 the same demo on OpenShift (D-062): the router and OpenShift login in front, llama.cpp in the
@@ -56,7 +56,7 @@ with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/
     with outer:
         if OPENSHIFT:
             router = Haproxy("OpenShift router\nHTTPS routes")
-            login = Oauth2Proxy("OpenShift login\nconsole · Grafana · policy engine")
+            login = Oauth2Proxy("OpenShift login\nconsole · Grafana · circuit breaker")
             argocd = Argocd("Argo CD\n(OpenShift GitOps)\ndeploys everything from git")
         else:
             llm = Rack("LLM API\nlocal language model\n(runs on the host)")
@@ -72,9 +72,9 @@ with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/
                 with Cluster("MCP gateway", graph_attr=mcp_box):
                     mcp_gw = Router("/mcp\nper-agent keys\ntool routing")
                 with Cluster("Guard"):
-                    guard = Decision("Policy rules\ntool allowlists\nargument rules")
+                    guard = Decision("Policy engine\ntool allowlists\nargument rules")
                     classifier = PredefinedProcess("ML injection classifier\nruns inside the guard, on CPU\nscores text 0 to 1")
-                killswitch = Firewall("Policy engine\nsuspends agents · stops tools\n+ control panel")
+                killswitch = Firewall("Circuit breaker\nsuspends agents · stops tools\n+ control panel")
 
             with Cluster("Agents (can only reach the gateways)"):
                 researcher = Server("Researcher agent\nreviews supplier documents")
