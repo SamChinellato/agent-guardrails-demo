@@ -1,7 +1,7 @@
 """Architecture diagram of the deployed demo, rendered with `diagrams` (make diagram).
 
 The gateway and the models are named by capability (D-045); the platform pieces (Kubernetes,
-Prometheus, Loki, Tempo, Grafana) by name (D-048). The gateway is one APISIX, drawn as the two
+Prometheus, Loki, Tempo, Grafana) by name (D-048). The gateway is one deployment, drawn as the two
 gateways its routes form (D-068): an API gateway for the model and the agents (/llm, /agents)
 and an MCP gateway for the tools (/mcp), each checking its traffic with the same guard.
 Bold blue: requests, all through a gateway. Red: control (kill switch). Dashed grey: telemetry.
@@ -66,7 +66,7 @@ with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/
             if OPENSHIFT:
                 llm = Rack("LLM API\nllama.cpp · Granite 4.0 Micro\n4-bit, on CPU, in the cluster")
 
-            with Cluster("AI gateway (one APISIX): every call passes here"):
+            with Cluster("AI gateway: every call passes here"):
                 with Cluster("API gateway", graph_attr=api_box):
                     api_gw = Router("/llm · /agents\nidentity\nprompt filters\nLLM proxy")
                 with Cluster("MCP gateway", graph_attr=mcp_box):
