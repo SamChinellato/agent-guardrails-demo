@@ -815,3 +815,21 @@ At the operator's request (2026-10-26):
 **Light-only console.** The console used to follow the operating system's dark mode. It is now light whatever the OS asks for, since it is mostly shown on projectors and shared screens. The palette is unchanged.
 
 **Light Grafana too.** Grafana's default theme is now `light` on both targets (`users.default_theme` in the Grafana CR on OpenShift, `grafana.ini` in the kube-prometheus-stack values on k3d), so the dashboards match the console. It applies to anonymous viewers and to users who haven't picked a theme; anyone can still switch in their profile.
+
+## D-069: The console says "circuit breaker", and a stop notice's title names what happened
+
+At the operator's request (2026-10-27):
+
+**Circuit breaker, not kill switch, in the console.** Everything the person chatting sees calls it the circuit breaker: the stop notices, the **New chat** tooltip, the Monitoring panel's node and its lines, and the story steps. Open means stopped and closed means running, as with a real breaker. Only the words changed: the service, its API, the control panel, Grafana, alerts and logs still say kill switch. In the architecture diagram, the same component is the **policy engine**, and the guard's rules box is now **policy rules**, so the two don't share a name.
+
+**Specific titles.** A stop notice used to say "The gateway suspended an agent" or "Assistant suspended", whatever had happened. The title now names the cause, built by the console from the kill switch's trip event (`describe_trip`):
+
+| Cause | Title |
+| --- | --- |
+| Guard, a forbidden tool or argument | "Executor suspended: it tried to export customer data" (or "to email outside Acme", "to change a protected record") |
+| Alert `AgentToolCallSpike` | "Researcher suspended: stuck in a loop of tool calls" |
+| Alert `TokenBurn` | "Researcher suspended: using far too many tokens" |
+| Alert `GuardBlockSpike` | "Researcher suspended: kept sending blocked requests" |
+| Operator | "Executor suspended by an operator", "Everything stopped by an operator" |
+
+A message sent while an agent is already suspended gets a 503 carrying the incident ID. The console looks that incident's first trip up in the kill switch's events and words it with "still" ("Researcher still suspended: stuck in a loop of tool calls"), adding that it lasts until a new chat. If the lookup fails, the old generic notice is shown.

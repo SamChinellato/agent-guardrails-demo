@@ -125,7 +125,7 @@
   </div>
   <span class="spacer"></span>
   <button class="hbtn" id="monitorBtn" type="button" aria-pressed="false" aria-controls="monitor">Monitoring</button>
-  <button class="hbtn" id="newChat" type="button" title="Clear the chat, open every kill switch and restore the policy">New chat</button>
+  <button class="hbtn" id="newChat" type="button" title="Clear the chat, close every circuit breaker and restore the policy">New chat</button>
 </header>
 
 <div class="shell">
@@ -222,8 +222,9 @@ function blockedNotice(d) {
   return notice("Blocked by the gateway",
     "Your message contains a phrase used in known prompt-injection attacks, so it never reached the assistant. Try rephrasing it.");
 }
-const SUSPENDED = notice.bind(null, "Assistant suspended",
-  "The gateway's kill switch is on for this assistant, so it can't answer. Start a new chat to reset it.");
+// The title says what suspended the agent when the console could find out (D-069)
+const suspendedNotice = d => d && d.title ? notice(d.title, d.text) : notice("Assistant suspended",
+  "The gateway's circuit breaker is open for this assistant, so it can't answer. Start a new chat to reset it.");
 
 // What the agents did, one line per agent, with anything the gateway stopped in red
 function usedLine(events) {
@@ -233,7 +234,7 @@ function usedLine(events) {
     const who = e.agent || "researcher";
     if (!byAgent.has(who)) byAgent.set(who, new Map());
     const stopped = e.type === "halted" ? "halted" : (e.outcome === "denied" || e.outcome === "quarantined") ? e.outcome : "";
-    const word = e.type === "halted" ? "stopped by the kill switch"
+    const word = e.type === "halted" ? "stopped by the circuit breaker"
       : stopped === "denied" ? "blocked: " + (TOOL_ATTEMPT[e.tool] || e.tool)
       : stopped === "quarantined" ? "withheld: a document" : (TOOL_WORDS[e.tool] || e.tool);
     const m = byAgent.get(who), k = word + "|" + (stopped ? 1 : 0);
@@ -290,7 +291,7 @@ function render(ex, d) {
   ex.traceId = d.trace_id || null;
   if (d.kind === "blocked") { box.append(blockedNotice(d), metaLine(ex)); return; }
   if (d.kind === "error") { box.append(notice("Something went wrong", d.message)); return; }
-  if (d.kind === "halted") { box.append(SUSPENDED(), metaLine(ex)); return; }
+  if (d.kind === "halted") { box.append(suspendedNotice(d), metaLine(ex)); return; }
 
   const steps = d.kind === "steps" ? d.steps : [{ ...d, kind: "agent" }];
   const trips = steps.filter(s => s.kind === "lane" && s.tone === "stop");
@@ -304,8 +305,8 @@ function render(ex, d) {
     }
     const w = withheldNotice(st.events); if (w) box.append(w);
     if (!trips.length) { const n = deniedNotice(st.events); if (n) box.append(n); }
-    if (halted && !trips.length) box.append(SUSPENDED());
-    for (const t of trips) box.append(notice("The gateway suspended an agent", t.text));
+    if (halted && !trips.length) box.append(suspendedNotice(st));
+    for (const t of trips) box.append(notice(t.title || "The gateway suspended an agent", t.text));
     box.append(metaLine(ex, usedLine(st.events)));
     if (st.reply) history.push({ role: "assistant", content: st.reply });
   }
@@ -415,7 +416,7 @@ const NODES = {
   executor:   { x: 298, y: 250, label: "Executor agent" },
   llm:        { x: 180, y: 330, label: "LLM API" },
   actions:    { x: 298, y: 390, label: "Actions tool" },
-  killswitch: { x: 62,  y: 390, label: "Kill switch" },
+  killswitch: { x: 62,  y: 390, label: "Circuit breaker" },
 };
 const LINKS = {
   "you-researcher": ["you", "researcher"], "researcher-docs": ["researcher", "docs"],
@@ -478,13 +479,13 @@ function sentences(flow, suspendedScopes) {
     const parts = [`${l.calls} ${l.calls === 1 ? "call" : "calls"}`];
     if (l.blocked) parts.push(`${l.blocked} blocked`);
     if (l.withheld) parts.push(`${l.withheld} withheld`);
-    if (l.stopped) parts.push(`${l.stopped} refused by the kill switch`);
+    if (l.stopped) parts.push(`${l.stopped} refused by the circuit breaker`);
     const li = el("li", l.blocked || l.withheld || l.stopped ? "bad" : "",
       `${NAME[a]} to ${b === "executor" ? "Executor" : NAME[b]}: ${parts.join(", ")}` + (l.details.length ? ` (${l.details.join("; ")})` : ""));
     ul.append(li);
   }
   const scopes = new Set([...(flow.kills || []), ...(suspendedScopes || [])]);
-  for (const sc of scopes) ul.append(el("li", "bad", `Kill switch: suspended ${sc === "global" ? "everything" : "the " + sc.replace("agent:", "") + " agent"}`));
+  for (const sc of scopes) ul.append(el("li", "bad", `Circuit breaker: suspended ${sc === "global" ? "everything" : "the " + sc.replace("agent:", "") + " agent"}`));
   return ul;
 }
 

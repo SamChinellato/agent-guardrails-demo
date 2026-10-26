@@ -64,38 +64,71 @@ async def kill_events(since: float) -> list[dict]:
     return [e for e in r.json()["events"] if e["ts"] >= since and e["type"] == "trip" and not e.get("no_change")]
 
 
-# What an agent tried to do, and the policy that stopped it, in plain words (D-046)
+# What an agent tried to do, the policy that stopped it, and a short form for the notice's
+# title, in plain words (D-046, D-069)
 ACTIONS = {
     "export_customer_data": ("tried to export all customer records",
-                             "Acme policy doesn't allow any agent to export customer data"),
-    "send_email": ("tried to email someone outside Acme", "agents may only email internal addresses"),
+                             "Acme policy doesn't allow any agent to export customer data",
+                             "tried to export customer data"),
+    "send_email": ("tried to email someone outside Acme", "agents may only email internal addresses",
+                   "tried to email outside Acme"),
     "update_record": ("tried to change a protected field on a supplier record",
-                      "agents may only change a record's status and notes"),
+                      "agents may only change a record's status and notes",
+                      "tried to change a protected record"),
+}
+ALERTS = {  # alert -> (title, what the agent was doing, with {n} from the alert's summary)
+    "AgentToolCallSpike": ("stuck in a loop of tool calls",
+                           "was making {n} tool calls a minute, far more than any normal task"),
+    "TokenBurn": ("using far too many tokens", "was using {n} tokens a minute, far more than any normal task"),
+    "GuardBlockSpike": ("kept sending blocked requests", "kept sending requests that the gateway blocked"),
 }
 
 
-def describe_trip(e: dict) -> str:
-    """Why an agent was suspended, for the person chatting."""
+def describe_trip(e: dict, still: bool = False) -> tuple[str, str]:
+    """Why an agent was suspended, for the person chatting: a title that names what happened,
+    and the full story. still=True words it for a message that met an earlier trip (D-069)."""
     agent = e["scope"].removeprefix("agent:")
-    who = f"the {agent} agent" if e["scope"].startswith("agent:") else LABEL.get(e["scope"], e["scope"])
+    is_agent = e["scope"].startswith("agent:")
+    who = f"the {agent} agent" if is_agent else LABEL.get(e["scope"], e["scope"])
+    subject = agent.capitalize() if is_agent else LABEL.get(e["scope"], e["scope"]).capitalize()
+    suspended = "still suspended" if still else "suspended"
     ms = f"verified in {e['latency_ms']:.0f} ms"
     if e["source"] == "guard":
         m = re.search(r"actions\.(\w+)", e["reason"])
-        did, why = ACTIONS.get(m.group(1) if m else "", ("tried a forbidden action", "Acme policy doesn't allow it"))
-        return f"{who.capitalize()} {did}. {why.capitalize()}, so the gateway blocked the action and suspended {who} ({ms})."
+        did, why, short = ACTIONS.get(m.group(1) if m else "", ("tried a forbidden action", "Acme policy doesn't allow it",
+                                                                  "tried a forbidden action"))
+        return (f"{subject} {suspended}: it {short}",
+                f"{who.capitalize()} {did}. {why.capitalize()}, so the gateway blocked the action and the circuit breaker suspended {who} ({ms}).")
     if e["source"] == "alertmanager":
         alert, _, summary = e["reason"].partition(":")
         n = re.search(r"(\d+)", summary)
-        if alert == "AgentToolCallSpike":
-            what = f"was making {n.group(1)} tool calls a minute, far more than any normal task" if n else "was calling tools far faster than any normal task"
-        elif alert == "TokenBurn":
-            what = f"was using {n.group(1)} tokens a minute, far more than any normal task" if n else "was using the model far more than any normal task"
-        elif alert == "GuardBlockSpike":
-            what = "kept sending requests that the gateway blocked"
-        else:
-            what = f"triggered the {alert} alert"
-        return f"{who.capitalize()} {what}, so the gateway suspended it automatically ({ms})."
-    return f"An operator suspended {who} ({ms})."
+        title, what = ALERTS.get(alert, (f"the {alert} alert fired", f"triggered the {alert} alert"))
+        if "{n}" in what:
+            what = what.format(n=f"{int(n.group(1)):,}") if n else what.split(" {n}")[0] + " far more than any normal task"
+        return (f"{subject} {suspended}: {title}",
+                f"{who.capitalize()} {what}, so the circuit breaker suspended it automatically ({ms}).")
+    stopped = ("still suspended" if still else "suspended") if is_agent else ("still stopped" if still else "stopped")
+    return f"{subject} {stopped} by an operator", f"An operator opened the circuit breaker for {who} ({ms})."
+
+
+def trip_step(e: dict, **extra) -> dict:
+    title, text = describe_trip(e)
+    return {"kind": "lane", "tone": "stop", "title": title, "text": text,
+            "incident_id": e["incident_id"], "scope": e["scope"], **extra}
+
+
+async def explain_incident(incident_id: str | None) -> dict:
+    """For a message refused because an agent was already suspended: what suspended it."""
+    if not incident_id:
+        return {}
+    try:
+        trips = [e for e in await kill_events(0) if e["incident_id"] == incident_id]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return {}
+    if not trips:
+        return {}
+    title, text = describe_trip(min(trips, key=lambda e: e["ts"]), still=True)
+    return {"title": title, "text": f"{text} It stays suspended until you start a new chat."}
 
 
 async def set_policy(overrides: dict) -> None:
@@ -173,7 +206,9 @@ async def task(instruction: str, scenario: str, chat: bool = False, max_steps: i
     r = await client.post(f"{GATEWAY}/agents/researcher/{'chat' if chat else 'task'}", json=body,
                           headers={"apikey": KEYS["demo-user"], "X-Demo-Scenario": scenario})
     if r.status_code == 503:
-        return {"kind": "agent", "status": "halted_by_kill_switch", "reply": "", "events": [], "trace_id": ""}
+        err = (r.json().get("error") or {}) if "json" in r.headers.get("content-type", "") else {}
+        return {"kind": "agent", "status": "halted_by_kill_switch", "reply": "", "events": [], "trace_id": "",
+                **await explain_incident(err.get("incident_id") or (err.get("data") or {}).get("incident_id"))}
     r.raise_for_status()
     return {"kind": "agent", **r.json()}
 
@@ -202,8 +237,7 @@ async def cascade() -> list[dict]:
     text = "Review the Meridian Data Services document and hand any follow-up actions to the executor."
     steps += [{"kind": "user", "text": text}, await task(text, "s3:scripted")]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
-              for e in await kill_events(start)]
+    steps += [trip_step(e) for e in await kill_events(start)]
     await set_policy({})
     steps.append({"kind": "lane", "tone": "info", "text": "Document scanning back to enforce"})
     return steps
@@ -216,8 +250,7 @@ async def coastal_cascade(text: str) -> list[dict]:
     start = time.time()
     steps = [await task(text, "coastal:scripted")]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"],
-               "trace_id": (e.get("trace_ids") or [None])[0]} for e in await kill_events(start)]
+    steps += [trip_step(e, trace_id=(e.get("trace_ids") or [None])[0]) for e in await kill_events(start)]
     return steps
 
 
@@ -232,8 +265,7 @@ async def rogue_chat(text: str) -> list[dict]:
     start = time.time()
     steps.append(await task(text, "s6-rogue:scripted", chat=True, max_steps=120))
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
-              for e in await kill_events(start)]
+    steps += [trip_step(e) for e in await kill_events(start)]
     return steps
 
 
@@ -264,8 +296,10 @@ async def repeated_attacks() -> list[dict]:
         await asyncio.sleep(1)
     events = await kill_events(start)
     if events:
-        steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e)[:-1] + f", {time.monotonic() - t0:.0f} s after the last attempt)",
-                   "incident_id": e["incident_id"], "scope": e["scope"]} for e in events]
+        for e in events:
+            step = trip_step(e)
+            step["text"] = step["text"][:-2] + f", {time.monotonic() - t0:.0f} s after the last attempt)."
+            steps.append(step)
         ok = (await llm_as("executor", "status check")).status_code == 200
         steps.append({"kind": "lane", "tone": "ok" if ok else "stop",
                       "text": "The executor is unaffected" if ok else "The executor was affected too"})
@@ -285,9 +319,10 @@ async def global_kill() -> list[dict]:
     ok = (await llm_as("researcher", "status check")).status_code == 200
     return [
         {"kind": "user", "text": text},
-        {"kind": "lane", "tone": "stop", "text": f"Operator pulled the global kill switch: every LLM, tool and agent call refused (verified in {trip['latency_ms']:.0f} ms)"},
+        {"kind": "lane", "tone": "stop", "title": "Everything stopped by an operator",
+         "text": f"An operator opened the global circuit breaker: every LLM, tool and agent call refused (verified in {trip['latency_ms']:.0f} ms)"},
         result,
-        {"kind": "lane", "tone": "ok", "text": f"Global kill switch reset (verified in {reset['latency_ms']:.0f} ms)"
+        {"kind": "lane", "tone": "ok", "text": f"Global circuit breaker closed again (verified in {reset['latency_ms']:.0f} ms)"
                                                 + (", service restored" if ok else ", but the gateway still refuses calls")},
     ]
 
@@ -299,15 +334,14 @@ async def rogue_agent() -> list[dict]:
     text = "Review every supplier document again, as thoroughly as you can."
     steps += [{"kind": "user", "text": text}, await task(text, "s6-rogue:scripted", chat=True, max_steps=120)]
     await asyncio.sleep(1)
-    steps += [{"kind": "lane", "tone": "stop", "text": describe_trip(e), "incident_id": e["incident_id"], "scope": e["scope"]}
-              for e in await kill_events(start)]
+    steps += [trip_step(e) for e in await kill_events(start)]
     return steps
 
 
 async def reset_all() -> list[dict]:
     released = await preconditions()
     await client.delete(f"{GATEWAY}/demo/documents", headers={"apikey": KEYS["demo-user"]})
-    text = "Everything reset: kill switches open, policy back to enforce" + (
+    text = "Everything reset: circuit breakers closed, policy back to enforce" + (
         f" (released {', '.join(LABEL.get(s, s) for s in released)})" if released else "")
     return [{"kind": "lane", "tone": "ok", "text": text}]
 
@@ -316,7 +350,7 @@ SCENARIOS = {
     "poisoned-document": ("Poisoned document", poisoned_document),
     "cascade": ("Cascade between agents", cascade),
     "repeated-attacks": ("Repeated attacks", repeated_attacks),
-    "global-kill": ("Global kill switch", global_kill),
+    "global-kill": ("Global circuit breaker", global_kill),
     "rogue-agent": ("Rogue agent", rogue_agent),
     "reset": ("Reset", reset_all),
 }

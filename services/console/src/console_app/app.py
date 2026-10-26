@@ -111,7 +111,8 @@ async def chat(request: Request) -> JSONResponse:
                              "score": err.get("score"), "threshold": _threshold(err.get("reason")),
                              "trace_id": trace_id})
     if r.status_code == 503 and err.get("type") == "kill_switch_engaged":
-        return JSONResponse({"kind": "halted", "incident_id": err.get("incident_id"), "trace_id": trace_id})
+        return JSONResponse({"kind": "halted", "incident_id": err.get("incident_id"), "trace_id": trace_id,
+                             **await scenarios.explain_incident(err.get("incident_id"))})
     log.warning("unexpected gateway answer", extra={"status": r.status_code})
     return JSONResponse({"kind": "error", "message": f"The gateway answered {r.status_code}."})
 

@@ -80,7 +80,7 @@ async def flow(trace_id: str, settle_s: float = 10) -> dict:
                     if status in (400, 403):  # MCP denials answer 200; those come from the guard below
                         bump(link, "blocked", "prompt blocked" if link.endswith("llm") else "message blocked")
                     elif status == 503:
-                        bump(link, "stopped", "refused: kill switch on")
+                        bump(link, "stopped", "refused: circuit breaker open")
                 if service == "guard":
                     for ev in span.get("events", []):
                         if ev["name"] != "guard.decision":
