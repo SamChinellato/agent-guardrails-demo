@@ -25,7 +25,7 @@ spec:
     log: {mode: console}
     auth: {disable_login_form: "false"}
     auth.anonymous: {enabled: "true", org_role: Viewer}
-    users: {default_theme: dark}
+    users: {default_theme: light}   # matches the light console (D-068)
     # Keep the plugins bundled with the pinned image. Grafana's background installer would
     # otherwise replace prometheus, loki and tempo with downloads from grafana.com, stop the
     # bundled ones, fail on the operator's read-only plugin directory, and leave them

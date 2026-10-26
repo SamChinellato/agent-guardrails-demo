@@ -99,6 +99,7 @@ grafana:
     # With HOST_BIND=0.0.0.0 that includes anyone on the local network (D-023).
     auth.anonymous: {enabled: true, org_role: Viewer}
     dashboards: {min_refresh_interval: 5s}
+    users: {default_theme: light}   # matches the light console (D-068)
   # Datasources and dashboards come from ConfigMaps via the sidecar (7.8, OBS-05)
   sidecar:
     resources:
