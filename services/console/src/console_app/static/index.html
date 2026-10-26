@@ -298,7 +298,7 @@ function render(ex, d) {
   ex.suspended = trips.map(s => s.scope).filter(Boolean);
   for (const st of steps.filter(s => s.kind === "agent")) {
     const halted = st.status === "halted_by_kill_switch";
-    if (!halted || st.reply) {
+    if (!halted) {  // a halted agent's reply is only "Halted: ..."; the notice below says why
       const a = el("div", "assistant");
       a.append(richText(el("div", "answer"), st.reply || "(no reply)"));
       box.append(a);

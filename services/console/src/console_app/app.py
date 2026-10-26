@@ -103,6 +103,8 @@ async def chat(request: Request) -> JSONResponse:
     err = data.get("error") if isinstance(data.get("error"), dict) else {}
 
     if r.status_code == 200:
+        if data.get("status") == "halted_by_kill_switch":  # the agent met an earlier trip (D-069)
+            data.update(await scenarios.explain_halt())
         return JSONResponse({"kind": "reply", "trace_id": trace_id, **data})
     if r.status_code == 400:  # ai-prompt-guard: a known attack pattern
         return JSONResponse({"kind": "blocked", "reason": "pattern", "trace_id": trace_id})
@@ -112,7 +114,7 @@ async def chat(request: Request) -> JSONResponse:
                              "trace_id": trace_id})
     if r.status_code == 503 and err.get("type") == "kill_switch_engaged":
         return JSONResponse({"kind": "halted", "incident_id": err.get("incident_id"), "trace_id": trace_id,
-                             **await scenarios.explain_incident(err.get("incident_id"))})
+                             **await scenarios.explain_halt(err.get("incident_id"))})
     log.warning("unexpected gateway answer", extra={"status": r.status_code})
     return JSONResponse({"kind": "error", "message": f"The gateway answered {r.status_code}."})
 

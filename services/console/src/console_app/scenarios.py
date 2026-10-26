@@ -117,13 +117,18 @@ def trip_step(e: dict, **extra) -> dict:
             "incident_id": e["incident_id"], "scope": e["scope"], **extra}
 
 
-async def explain_incident(incident_id: str | None) -> dict:
-    """For a message refused because an agent was already suspended: what suspended it."""
-    if not incident_id:
-        return {}
+async def explain_halt(incident_id: str | None = None, agent: str = "researcher") -> dict:
+    """For a message refused because an agent was already suspended: what suspended it. The
+    gateway's 503 names the incident when the console sees it; when only the agent saw it, the
+    newest trip of an engaged scope that covers the agent is the one in force."""
     try:
-        trips = [e for e in await kill_events(0) if e["incident_id"] == incident_id]
-    except (httpx.HTTPError, KeyError, ValueError):
+        events = await kill_events(0)
+        if not incident_id:
+            engaged = {sc for sc, on in (await ks_status()).items() if on} & {f"agent:{agent}", "tools", "global"}
+            latest = max((e for e in events if e["scope"] in engaged), key=lambda e: e["ts"], default=None)
+            incident_id = latest and latest["incident_id"]
+        trips = [e for e in events if e["incident_id"] == incident_id]
+    except (httpx.HTTPError, KeyError, ValueError, TypeError):
         return {}
     if not trips:
         return {}
@@ -208,9 +213,12 @@ async def task(instruction: str, scenario: str, chat: bool = False, max_steps: i
     if r.status_code == 503:
         err = (r.json().get("error") or {}) if "json" in r.headers.get("content-type", "") else {}
         return {"kind": "agent", "status": "halted_by_kill_switch", "reply": "", "events": [], "trace_id": "",
-                **await explain_incident(err.get("incident_id") or (err.get("data") or {}).get("incident_id"))}
+                **await explain_halt(err.get("incident_id") or (err.get("data") or {}).get("incident_id"))}
     r.raise_for_status()
-    return {"kind": "agent", **r.json()}
+    data = r.json()
+    if data.get("status") == "halted_by_kill_switch":
+        data.update(await explain_halt())
+    return {"kind": "agent", **data}
 
 
 async def llm_as(agent: str, text: str, scenario: str = "smoke") -> httpx.Response:
