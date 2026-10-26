@@ -805,3 +805,11 @@ The operator's policy vocabulary includes `extractIdentity`, `authenticate`, `au
 **Found, and blocking the publish.** IDIG's `imageRegistry` (`tz-docker-registry.duckdns.org/kskhong`) is unreachable from the cluster. Every new MCP server pod fails to pull its image, which is why the sample `transactions` server has been stuck in ImagePullBackOff. The registry must be fixed or mirrored before a publish can run.
 
 The steps are in [IDIG_INTEGRATION.md](IDIG_INTEGRATION.md).
+
+## D-068: The diagram shows an API gateway and an MCP gateway; the console is light only
+
+At the operator's request (2026-10-26):
+
+**Two gateways in the architecture diagram.** `docs/diagram/architecture.py` now draws the AI gateway as two: an **API gateway** for the model and the agents (`/llm`, `/agents`: identity, prompt filters, the LLM proxy) and an **MCP gateway** for the tools (`/mcp`: per-agent keys, tool routing). They are still one APISIX deployment. The split follows the routes, which already have separate plugin configs (`pc-llm` and `pc-agents` against `pc-mcp`), and it matches how the demo is presented next to a dedicated MCP gateway such as Interact Gateway (D-067). Both gateways use the same guard: the API gateway for prompts, the MCP gateway for every tool call. The kill switch acts on both. No runtime component changed.
+
+**Light-only console.** The console used to follow the operating system's dark mode. It is now light whatever the OS asks for, since it is mostly shown on projectors and shared screens. The palette is unchanged.

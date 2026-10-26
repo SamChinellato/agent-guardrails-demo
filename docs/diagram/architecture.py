@@ -1,8 +1,10 @@
 """Architecture diagram of the deployed demo, rendered with `diagrams` (make diagram).
 
 The gateway and the models are named by capability (D-045); the platform pieces (Kubernetes,
-Prometheus, Loki, Tempo, Grafana) by name (D-048). Bold blue: requests, all through the
-gateway. Red: control (kill switch). Dashed grey: telemetry.
+Prometheus, Loki, Tempo, Grafana) by name (D-048). The gateway is one APISIX, drawn as the two
+gateways its routes form (D-068): an API gateway for the model and the agents (/llm, /agents)
+and an MCP gateway for the tools (/mcp), each checking its traffic with the same guard.
+Bold blue: requests, all through a gateway. Red: control (kill switch). Dashed grey: telemetry.
 
 TARGET=k3d (default) draws the laptop demo: k3d, the LLM on the host. TARGET=openshift draws
 the same demo on OpenShift (D-062): the router and OpenShift login in front, llama.cpp in the
@@ -40,6 +42,8 @@ edge = {"fontname": "Helvetica", "fontsize": "12"}
 host = {"bgcolor": "#f6f7f9", "fontsize": "16"}
 k8s = {"bgcolor": "#eaf0fb", "fontsize": "16", "pencolor": "#326ce5"}
 ocp = {"bgcolor": "#fbecec", "fontsize": "16", "pencolor": "#ee0000"}   # OpenShift red
+api_box = {"bgcolor": "#dde7f7", "fontsize": "15", "pencolor": "#2f5aa8", "penwidth": "2"}
+mcp_box = {"bgcolor": "#e2f1ea", "fontsize": "15", "pencolor": "#2e7d5b", "penwidth": "2"}
 
 with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/architecture", show=False,
              direction="LR", outformat="png", graph_attr=graph, node_attr=node, edge_attr=edge):
@@ -62,14 +66,17 @@ with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/
             if OPENSHIFT:
                 llm = Rack("LLM API\nllama.cpp · Granite 4.0 Micro\n4-bit, on CPU, in the cluster")
 
-            with Cluster("AI gateway: every call passes here"):
-                gateway = Router("Gateway\nidentity · prompt filters\nLLM proxy · tool routing")
+            with Cluster("AI gateway (one APISIX): every call passes here"):
+                with Cluster("API gateway", graph_attr=api_box):
+                    api_gw = Router("/llm · /agents\nidentity\nprompt filters\nLLM proxy")
+                with Cluster("MCP gateway", graph_attr=mcp_box):
+                    mcp_gw = Router("/mcp\nper-agent keys\ntool routing")
                 with Cluster("Guard"):
                     guard = Decision("Policy engine\ntool allowlists\nargument rules")
                     classifier = PredefinedProcess("ML injection classifier\nruns inside the guard, on CPU\nscores text 0 to 1")
                 killswitch = Firewall("Kill switch\n+ control panel")
 
-            with Cluster("Agents (can only reach the gateway)"):
+            with Cluster("Agents (can only reach the gateways)"):
                 researcher = Server("Researcher agent\nreviews supplier documents")
                 executor = Server("Executor agent\nupdates records, sends email")
 
@@ -88,25 +95,30 @@ with Diagram("", filename="/out/architecture-openshift" if OPENSHIFT else "/out/
         analyst >> Edge(label="HTTPS", **REQUEST) >> router >> Edge(**REQUEST) >> login
         login >> Edge(label="chat", **REQUEST) >> console
         login >> Edge(label="dashboards", **TELEMETRY) >> grafana
-        argocd >> Edge(label="syncs from git", **DEPLOY) >> gateway
+        argocd >> Edge(label="syncs from git", **DEPLOY) >> api_gw
     else:
         analyst >> Edge(label="chat", **REQUEST) >> console
-    console >> Edge(label="as demo-user", **REQUEST) >> gateway
-    gateway >> Edge(label="every call checked", **REQUEST) >> guard
+    console >> Edge(label="as demo-user", **REQUEST) >> api_gw
+    api_gw >> Edge(label="prompts checked", **REQUEST) >> guard
+    mcp_gw >> Edge(label="every tool call checked", **REQUEST) >> guard
     guard >> Edge(label="text from people and tools", style="bold", color="#2f5aa8") >> classifier
-    gateway >> Edge(label="model calls", **REQUEST) >> llm
+    api_gw >> Edge(label="model calls", **REQUEST) >> llm
     guard >> Edge(**REQUEST) >> docs
     guard >> Edge(**REQUEST) >> actions
-    # Agents only talk to the gateway: requests in, their LLM and tool calls out
-    gateway >> Edge(label="your request · its LLM and tool calls", dir="both", **REQUEST) >> researcher
-    gateway >> Edge(label="hand-off (via the gateway) · its tool calls", dir="both", **REQUEST) >> executor
+    # Agents only talk to the gateways: requests and model calls through the API gateway,
+    # tool calls through the MCP gateway
+    api_gw >> Edge(label="your request · its LLM calls", dir="both", **REQUEST) >> researcher
+    api_gw >> Edge(label="hand-off (via the gateway) · its LLM calls", dir="both", **REQUEST) >> executor
+    researcher >> Edge(label="tool calls", **REQUEST) >> mcp_gw
+    executor >> Edge(label="tool calls", **REQUEST) >> mcp_gw
 
-    gateway >> Edge(label="traces · logs", **TELEMETRY) >> collector
+    [api_gw, mcp_gw] >> Edge(label="traces · logs", **TELEMETRY) >> collector
     collector >> Edge(**TELEMETRY) >> tempo
     collector >> Edge(**TELEMETRY) >> loki
-    gateway >> Edge(label="metrics", **TELEMETRY) >> prometheus
+    [api_gw, mcp_gw] >> Edge(label="metrics", **TELEMETRY) >> prometheus
     [tempo, loki, prometheus] >> Edge(**TELEMETRY) >> grafana
 
     prometheus >> Edge(label="anomaly alerts", **CONTROL) >> killswitch
     guard >> Edge(label="auto-trip", **CONTROL) >> killswitch
-    killswitch >> Edge(label="stops an agent or everything", constraint="false", **CONTROL) >> gateway
+    killswitch >> Edge(label="stops an agent or everything", constraint="false", **CONTROL) >> api_gw
+    killswitch >> Edge(label="stops tools", constraint="false", **CONTROL) >> mcp_gw

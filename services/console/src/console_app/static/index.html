@@ -17,14 +17,8 @@
     --stop: #c8322f;
     --stop-soft: #f7e1e0;
     --rule: #d8dde4;
+    /* Light only, whatever the OS asks for: it reads better on a projector (D-068) */
     color-scheme: light;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --fog: #141a24; --paper: #1d2533; --ink: #e8ecf2; --muted: #9aa3b2;
-      --lane: #6f97e0; --lane-soft: #26375a; --stop: #f0706c; --stop-soft: #3a2224;
-      --rule: #2c3647; color-scheme: dark;
-    }
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
