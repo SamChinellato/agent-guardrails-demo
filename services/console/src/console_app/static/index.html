@@ -62,7 +62,6 @@
   .meta { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
   .meta a, .meta button { color: var(--muted); background: none; border: 0; padding: 0; text-decoration: underline; font-size: inherit; }
   .meta .sep { margin: 0 6px; }
-  .used .denied { color: var(--stop); }
 
   .notice { align-self: flex-start; max-width: 90%; background: var(--stop-soft); border-left: 4px solid var(--stop);
     border-radius: 4px 12px 12px 4px; padding: 10px 14px; }
@@ -178,11 +177,6 @@ const TOOL_ATTEMPT = {
   actions__update_record: "update a record", actions__send_email: "send an email",
   actions__export_customer_data: "export customer data", handoff_to_executor: "hand off to the executor",
 };
-const TOOL_WORDS = {
-  docs__list_documents: "listed documents", docs__read_document: "read a document",
-  actions__update_record: "updated a record", actions__send_email: "sent an email",
-  actions__export_customer_data: "exported customer data", handoff_to_executor: "handed off to the executor",
-};
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -226,36 +220,6 @@ function blockedNotice(d) {
 const suspendedNotice = d => d && d.title ? notice(d.title, d.text) : notice("Assistant suspended",
   "The gateway's circuit breaker is open for this assistant, so it can't answer. Start a new chat to reset it.");
 
-// What the agents did, one line per agent, with anything the gateway stopped in red
-function usedLine(events) {
-  const byAgent = new Map();
-  for (const e of events || []) {
-    if (e.type !== "tool" && e.type !== "halted") continue;
-    const who = e.agent || "researcher";
-    if (!byAgent.has(who)) byAgent.set(who, new Map());
-    const stopped = e.type === "halted" ? "halted" : (e.outcome === "denied" || e.outcome === "quarantined") ? e.outcome : "";
-    const word = e.type === "halted" ? "stopped by the circuit breaker"
-      : stopped === "denied" ? "blocked: " + (TOOL_ATTEMPT[e.tool] || e.tool)
-      : stopped === "quarantined" ? "withheld: a document" : (TOOL_WORDS[e.tool] || e.tool);
-    const m = byAgent.get(who), k = word + "|" + (stopped ? 1 : 0);
-    m.set(k, (m.get(k) || 0) + 1);
-  }
-  if (!byAgent.size) return null;
-  const wrap = el("div", "used");
-  for (const [who, m] of byAgent) {
-    const line = el("div");
-    line.append(who[0].toUpperCase() + who.slice(1) + ": ");
-    let first = true;
-    for (const [k, n] of m) {
-      const [word, bad] = k.split("|");
-      if (!first) line.append(", ");
-      first = false;
-      line.append(el("span", bad === "1" ? "denied" : "", word + (n > 1 ? ` (${n}×)` : "")));
-    }
-    wrap.append(line);
-  }
-  return wrap;
-}
 function withheldNotice(events) {
   if (!(events || []).some(e => e.outcome === "quarantined")) return null;
   return notice("A document was withheld",
@@ -309,7 +273,7 @@ function render(ex, d) {
     if (!trips.length) { const n = deniedNotice(st.events); if (n) box.append(n); }
     if (halted && !trips.length) box.append(suspendedNotice(st));
     for (const t of trips) box.append(notice(t.title || "The gateway suspended an agent", t.text));
-    box.append(metaLine(ex, usedLine(st.events)));
+    box.append(metaLine(ex));
     if (st.reply && !st.withheld_only) history.push({ role: "assistant", content: st.reply });
   }
 }
