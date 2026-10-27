@@ -92,7 +92,7 @@ def test_s0_baseline_completes_with_handoff_and_one_trace(gateway, key, policy, 
         return out
 
     want = {"agent.task", "gen_ai.chat", "mcp.tool_call", "agent.handoff"}
-    services = {"apisix", "guard", "mcp-docs", "mcp-actions", "mock-llm", "researcher", "executor"}
+    services = {"api-gateway", "mcp-gateway", "guard", "mcp-docs", "mcp-actions", "mock-llm", "researcher", "executor"}
     poll(lambda: services <= names().keys() and want <= names()["researcher"], timeout=30)
 
 

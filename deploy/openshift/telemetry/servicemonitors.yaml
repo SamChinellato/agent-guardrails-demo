@@ -37,4 +37,13 @@ spec:
   selector:
     matchLabels: {app.kubernetes.io/name: apisix}
   endpoints:
-    - {port: prometheus, path: /apisix/prometheus/metrics, interval: 5s}
+    - port: prometheus
+      path: /apisix/prometheus/metrics
+      interval: 5s
+      # The scrape labels say "gateway", not the pod and Service names, so Grafana never
+      # shows the product's name (D-071). The objects themselves keep their chart names.
+      relabelings:
+        - {targetLabel: job, replacement: gateway}
+        - {targetLabel: service, replacement: gateway}
+        - {targetLabel: container, replacement: gateway}
+        - {sourceLabels: [__meta_kubernetes_pod_name], regex: "apisix-(.*)", targetLabel: pod, replacement: "gateway-$1"}

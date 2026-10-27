@@ -22,6 +22,10 @@ TEMPO_CA_FILE = os.environ.get("TEMPO_CA_FILE", "")
 ROUTE_LINK = {"agent-researcher": "you-researcher", "agent-executor": "researcher-executor"}
 
 
+# The gateway's spans, as the collector names them: /mcp routes and the rest (D-071)
+GATEWAYS = {"api-gateway", "mcp-gateway"}
+
+
 def _attrs(span: dict) -> dict:
     return {a["key"]: next(iter(a["value"].values()), None) for a in span.get("attributes", [])}
 
@@ -74,7 +78,7 @@ async def flow(trace_id: str, settle_s: float = 10) -> dict:
                     continue
                 seen.add(span["spanId"])
                 a = _attrs(span)
-                if service == "apisix" and (link := _link(a.get("route_id", ""), a.get("consumer_name", ""))):
+                if service in GATEWAYS and (link := _link(a.get("route_id", ""), a.get("consumer_name", ""))):
                     status = int(a.get("http.status_code") or 0)
                     bump(link)
                     if status in (400, 403):  # MCP denials answer 200; those come from the guard below

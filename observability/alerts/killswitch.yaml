@@ -29,8 +29,8 @@ spec:
         # every step resends the documents; the rogue loop uses 250k+ (D-037).
         - alert: TokenBurn
           expr: |
-            sum by (consumer) (rate(apisix_llm_prompt_tokens{consumer=~"researcher|executor"}[1m])
-                             + rate(apisix_llm_completion_tokens{consumer=~"researcher|executor"}[1m])) * 60 > 50000
+            sum by (consumer) (rate(gateway_llm_prompt_tokens{consumer=~"researcher|executor"}[1m])
+                             + rate(gateway_llm_completion_tokens{consumer=~"researcher|executor"}[1m])) * 60 > 50000
           for: 1m
           labels:
             severity: critical
@@ -42,7 +42,7 @@ spec:
         # 20 s window), sustained for 5 s. Fast enough to stop a runaway agent on stage (D-037).
         - alert: AgentToolCallSpike
           expr: |
-            sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*", consumer=~"researcher|executor"}[20s])) * 60 > 40
+            sum by (consumer) (rate(gateway_http_status{route=~"mcp-.*", consumer=~"researcher|executor"}[20s])) * 60 > 40
           for: 5s
           labels:
             severity: critical
@@ -53,8 +53,8 @@ spec:
         # Notify only: gateway errors other than deliberate kill-switch 503s
         - alert: GatewayErrorRate
           expr: |
-            sum(rate(apisix_http_status{code=~"5..", code!="503"}[2m]))
-              / clamp_min(sum(rate(apisix_http_status[2m])), 1e-9) > 0.2
+            sum(rate(gateway_http_status{code=~"5..", code!="503"}[2m]))
+              / clamp_min(sum(rate(gateway_http_status[2m])), 1e-9) > 0.2
           for: 1m
           labels:
             severity: warning

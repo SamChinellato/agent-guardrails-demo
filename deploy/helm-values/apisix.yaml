@@ -63,7 +63,7 @@ apisix:
   prometheus:
     enabled: true
     path: /apisix/prometheus/metrics
-    metricPrefix: apisix_
+    metricPrefix: gateway_
     containerPort: 9091
 
   # Explicit plugin list (7.2). Custom plugins (below) are appended by the chart.
@@ -111,7 +111,7 @@ apisix:
       set_ngx_var: true
     prometheus:
       export_uri: /apisix/prometheus/metrics
-      metric_prefix: apisix_
+      metric_prefix: gateway_
       export_addr:
         ip: 0.0.0.0
         port: 9091

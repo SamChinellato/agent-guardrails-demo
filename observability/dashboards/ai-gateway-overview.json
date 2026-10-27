@@ -99,7 +99,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(apisix_http_status[1m]))",
+          "expr": "sum(rate(gateway_http_status[1m]))",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -164,7 +164,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(increase(apisix_http_status{code=~\"400|403\"}[15m])) or vector(0)",
+          "expr": "sum(increase(gateway_http_status{code=~\"400|403\"}[15m])) or vector(0)",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -290,7 +290,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(sum by (consumer) (rate(apisix_llm_prompt_tokens[1m]) + rate(apisix_llm_completion_tokens[1m])) * 60) or vector(0)",
+          "expr": "sum(sum by (consumer) (rate(gateway_llm_prompt_tokens[1m]) + rate(gateway_llm_completion_tokens[1m])) * 60) or vector(0)",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
@@ -412,7 +412,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (consumer) (rate(apisix_http_status{consumer!=\"\"}[1m]))",
+          "expr": "sum by (consumer) (rate(gateway_http_status{consumer!=\"\"}[1m]))",
           "legendFormat": "{{consumer}}",
           "refId": "A"
         }
@@ -517,7 +517,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(apisix_http_status{code=~\"2..\"}[1m]))",
+          "expr": "sum(rate(gateway_http_status{code=~\"2..\"}[1m]))",
           "legendFormat": "allowed",
           "refId": "A"
         },
@@ -526,7 +526,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(apisix_http_status{code=~\"400|403\"}[1m]))",
+          "expr": "sum(rate(gateway_http_status{code=~\"400|403\"}[1m]))",
           "legendFormat": "blocked",
           "refId": "B"
         },
@@ -535,7 +535,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(apisix_http_status{code=\"503\"}[1m]))",
+          "expr": "sum(rate(gateway_http_status{code=\"503\"}[1m]))",
           "legendFormat": "killed",
           "refId": "C"
         }

@@ -127,7 +127,7 @@ def collect(target: str, kind: str, out: Path, say) -> dict:
                 start - 120, start + 1)]
             trace_ids += [d["trace_id"] for d in relevant if d.get("trace_id")]
             if len(set(trace_ids)) < 3:
-                access = loki_query(loki, f'{{service_name="apisix"}} | json | consumer=~"{who}"', start - 120, start + 1)
+                access = loki_query(loki, f'{{service_name=~"api-gateway|mcp-gateway"}} | json | consumer=~"{who}"', start - 120, start + 1)
                 trace_ids += [a["labels"]["trace_id"] for a in access if a["labels"].get("trace_id")]
         relevant = [d for d in relevant if d.get("verdict") in ("block", "flag")]
         incident_window = [start - 120, end]
@@ -151,9 +151,9 @@ def collect(target: str, kind: str, out: Path, say) -> dict:
         queries = {
             "killswitch_active": "max by (scope) (killswitch_active)",
             "guard_blocks_per_min": 'sum by (agent, check) (rate(guard_decisions_total{verdict="block"}[1m])) * 60',
-            "cut_off_503_per_min": 'sum by (consumer) (rate(apisix_http_status{code="503"}[1m])) * 60',
-            "tokens_per_min": "sum by (consumer) (rate(apisix_llm_prompt_tokens[1m]) + rate(apisix_llm_completion_tokens[1m])) * 60",
-            "tool_calls_per_min": 'sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*"}[1m])) * 60',
+            "cut_off_503_per_min": 'sum by (consumer) (rate(gateway_http_status{code="503"}[1m])) * 60',
+            "tokens_per_min": "sum by (consumer) (rate(gateway_llm_prompt_tokens[1m]) + rate(gateway_llm_completion_tokens[1m])) * 60",
+            "tool_calls_per_min": 'sum by (consumer) (rate(gateway_http_status{route=~"mcp-.*"}[1m])) * 60',
             "alerts_firing": 'max by (alertname, killswitch_scope) (ALERTS{alertstate="firing"})',
         }
         snapshot = {}

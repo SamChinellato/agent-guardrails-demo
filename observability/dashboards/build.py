@@ -154,7 +154,7 @@ def dashboard(uid, title, description, panels, annotations=None, tags=("ai-gatew
 
 # Shared expressions -----------------------------------------------------------------------
 TOKENS_PER_MIN_BY_AGENT = (
-    "sum by (consumer) (rate(apisix_llm_prompt_tokens[1m]) + rate(apisix_llm_completion_tokens[1m])) * 60"
+    "sum by (consumer) (rate(gateway_llm_prompt_tokens[1m]) + rate(gateway_llm_completion_tokens[1m])) * 60"
 )
 GUARD_BLOCK_ANNOTATION = {
     "name": "Guard blocks",
@@ -182,9 +182,9 @@ KILL_ANNOTATION = {
 def overview() -> dict:
     lay = Layout()
     p = [
-        lay.place(stat("Requests / s", "sum(rate(apisix_http_status[1m]))", unit="reqps", decimals=1), 6, 4),
+        lay.place(stat("Requests / s", "sum(rate(gateway_http_status[1m]))", unit="reqps", decimals=1), 6, 4),
         lay.place(
-            stat("Blocked (15 min)", 'sum(increase(apisix_http_status{code=~"400|403"}[15m])) or vector(0)',
+            stat("Blocked (15 min)", 'sum(increase(gateway_http_status{code=~"400|403"}[15m])) or vector(0)',
                  thresholds=[{"color": NEUTRAL, "value": None}, {"color": CRIT, "value": 1}], decimals=0),
             6, 4,
         ),
@@ -196,7 +196,7 @@ def overview() -> dict:
         lay.place(stat("LLM tokens / min", f"sum({TOKENS_PER_MIN_BY_AGENT}) or vector(0)", decimals=0), 6, 4),
         lay.place(
             timeseries("Requests by agent",
-                       [prom('sum by (consumer) (rate(apisix_http_status{consumer!=""}[1m]))', "{{consumer}}")],
+                       [prom('sum by (consumer) (rate(gateway_http_status{consumer!=""}[1m]))', "{{consumer}}")],
                        unit="reqps", overrides=agent_overrides()),
             12, 10,
         ),
@@ -204,9 +204,9 @@ def overview() -> dict:
             timeseries(
                 "Allowed · blocked · killed",
                 [
-                    prom('sum(rate(apisix_http_status{code=~"2.."}[1m]))', "allowed"),
-                    prom('sum(rate(apisix_http_status{code=~"400|403"}[1m]))', "blocked", "B"),
-                    prom('sum(rate(apisix_http_status{code="503"}[1m]))', "killed", "C"),
+                    prom('sum(rate(gateway_http_status{code=~"2.."}[1m]))', "allowed"),
+                    prom('sum(rate(gateway_http_status{code=~"400|403"}[1m]))', "blocked", "B"),
+                    prom('sum(rate(gateway_http_status{code="503"}[1m]))', "killed", "C"),
                 ],
                 unit="reqps",
                 overrides=named_color_overrides({"allowed": GOOD, "blocked": WARN, "killed": CRIT}),
@@ -228,7 +228,7 @@ def agent_behaviour() -> dict:
         ),
         lay.place(
             timeseries("Tool calls / min",
-                       [prom('sum by (consumer) (rate(apisix_http_status{route=~"mcp-.*"}[1m])) * 60', "{{consumer}}")],
+                       [prom('sum by (consumer) (rate(gateway_http_status{route=~"mcp-.*"}[1m])) * 60', "{{consumer}}")],
                        overrides=agent_overrides()),
             12, 11,
         ),
@@ -282,7 +282,7 @@ def incident() -> dict:
         lay.place(state, 24, 6),
         lay.place(
             timeseries("Cut off by the kill switch",
-                       [prom('sum by (consumer) (rate(apisix_http_status{code="503"}[1m])) * 60', "{{consumer}}")],
+                       [prom('sum by (consumer) (rate(gateway_http_status{code="503"}[1m])) * 60', "{{consumer}}")],
                        overrides=agent_overrides()),
             24, 9,
         ),

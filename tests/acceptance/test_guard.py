@@ -197,10 +197,10 @@ def test_decision_record_spans_and_metric(gateway, key, forward):
             out.setdefault(svc, []).extend(s for ss in b["scopeSpans"] for s in ss["spans"])
         return out
 
-    poll(lambda: {"apisix", "guard"} <= spans().keys(), timeout=15)
+    poll(lambda: "guard" in spans() and spans().keys() & {"api-gateway", "mcp-gateway"}, timeout=15)
     s = spans()
-    apisix_ids = {x["spanId"] for x in s["apisix"]}
-    assert any(x.get("parentSpanId") in apisix_ids for x in s["guard"])
+    gateway_ids = {x["spanId"] for g in ("api-gateway", "mcp-gateway") for x in s.get(g, [])}
+    assert any(x.get("parentSpanId") in gateway_ids for x in s["guard"])
     events = [e["name"] for x in s["guard"] for e in x.get("events", [])]
     assert "guard.decision" in events
 

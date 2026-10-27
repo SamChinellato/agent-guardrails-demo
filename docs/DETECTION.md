@@ -146,8 +146,8 @@ Prometheus alert rules (`observability/alerts/killswitch.yaml`), evaluated every
 
 | Alert | Signal | Threshold | Normal use | Action |
 | --- | --- | --- | --- | --- |
-| `AgentToolCallSpike` | MCP requests per consumer (`apisix_http_status`) | > 40/min over 20 s, for 5 s | about 6 calls per task | trip `agent:<name>` |
-| `TokenBurn` | prompt + completion tokens per consumer (`apisix_llm_*_tokens`) | > 50,000/min for 1 min | 11–15k/min | trip `agent:<name>` |
+| `AgentToolCallSpike` | MCP requests per consumer (`gateway_http_status`) | > 40/min over 20 s, for 5 s | about 6 calls per task | trip `agent:<name>` |
+| `TokenBurn` | prompt + completion tokens per consumer (`gateway_llm_*_tokens`) | > 50,000/min for 1 min | 11–15k/min | trip `agent:<name>` |
 | `GuardBlockSpike` | enforce-mode blocks of what the agent **sends** (`guard_decisions_total`) | ≥ 3 in 2 min | 0 | trip `agent:<name>` |
 | `GatewayErrorRate` | 5xx share, excluding kill-switch 503s | > 20% for 1 min | ~0 | notify only |
 

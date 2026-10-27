@@ -33,7 +33,7 @@
       "endpoint_uri": "${LOKI_PUSH_PATH}",
       "headers": "${LOKI_HEADERS}",
       "log_labels": {
-        "service_name": "apisix",
+        "service_name": "mcp-gateway",
         "route_id": "$route_id",
         "kubernetes_namespace_name": "${NS_GATEWAY}",
         "k8s_namespace_name": "${NS_GATEWAY}"

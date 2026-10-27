@@ -55,8 +55,8 @@ The `reason` explains the verdict in words: for injection checks, the score, thr
 
 | Metric | From | Labels | Used by |
 | --- | --- | --- | --- |
-| `apisix_http_status`, `apisix_http_latency` | APISIX | route, consumer, code | Overview dashboard, `AgentToolCallSpike`, `GatewayErrorRate` |
-| `apisix_llm_prompt_tokens`, `apisix_llm_completion_tokens` | APISIX (gateway-measured) | consumer | `TokenBurn`, token panels |
+| `gateway_http_status`, `gateway_http_latency` | the gateway (APISIX) | route, consumer, code | Overview dashboard, `AgentToolCallSpike`, `GatewayErrorRate` |
+| `gateway_llm_prompt_tokens`, `gateway_llm_completion_tokens` | the gateway (APISIX, measured there) | consumer | `TokenBurn`, token panels |
 | `guard_decisions_total` | guard | agent, check, mode, verdict | `GuardBlockSpike`, block panels |
 | `guard_inspect_seconds` | guard | stage | how long an LLM-route inspection took |
 | `killswitch_active` | kill switch | scope | "Kill switches on", the state timeline |

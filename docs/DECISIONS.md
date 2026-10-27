@@ -853,3 +853,22 @@ At the operator's request (2026-10-27), after comparing the old Graphviz picture
 **The guard is drawn as a call-out** (2026-10-27). Each gateway has a two-way line down to the guard and waits for its answer: the API gateway asks the classifier about the prompt, the MCP gateway asks the policy engine about each tool call and again about its result, and then calls the tools itself. That is how the Interact Gateway integration works (its policies call the guard before and after MCPInvoke, D-067), and it is the model the demo is presented with. Today's APISIX wiring differs on `/mcp`: the route's upstream is the guard, which checks the call, forwards it to the MCP server and scans the result, so the tools are reached through the guard rather than beside it (flow F3 in ARCHITECTURE.md). The diagram doesn't show that difference.
 
 **No circuit breaker box** (2026-10-27): Prometheus's anomaly alerts go straight to the two gateways and the policy engine, one red trunk with three branches, since those are where an agent or its tools are stopped. The kill-switch service still does the work (the console still says circuit breaker, D-069); the picture leaves it out, and the guard's auto-trip line with it.
+
+## D-071: Grafana says api-gateway and mcp-gateway, never APISIX
+
+At the operator's request (2026-10-27), nothing the demo shows in Grafana names the product behind the gateway. Only what reaches telemetry changed: the Kubernetes objects (the Helm release, the `apisix` Deployment, the `apisix-gateway` Service, the Argo CD app) keep their chart names, since renaming them would touch about 40 files and the network isolation the demo depends on.
+
+| What Grafana shows | Before | Now | Where |
+| --- | --- | --- | --- |
+| Trace service | `apisix` | `api-gateway` for `/llm`, `/agents` and the rest; `mcp-gateway` for `/mcp` | `gateway/plugin_metadata/opentelemetry.json` names every span `api-gateway`; the collectors move `/mcp` spans (route `mcp-*`) to `mcp-gateway` (below) |
+| Span attribute keys | `apisix.route_id`, `apisix.route_name`, … | `gateway.route_id`, … | collectors |
+| Trace host and pod | `hostname`, `k8s.pod.name`, `k8s.deployment.name` = `apisix…` | `gateway…` | collectors |
+| Log stream | `service_name="apisix"` | `api-gateway` (`pc-llm`, `pc-agents`), `mcp-gateway` (`pc-mcp`) | `loki-logger` labels in the plugin configs |
+| Metric names | `apisix_http_status`, `apisix_llm_*_tokens`, … | `gateway_http_status`, `gateway_llm_*_tokens`, … | `metric_prefix` and `metricPrefix` in `deploy/helm-values/apisix.yaml` |
+| Scrape labels (OpenShift) | `job`, `service`, `container`, `pod` = `apisix…` | `gateway…` | relabelings on the `apisix` ServiceMonitor |
+
+**Splitting the traces.** APISIX sets one resource, so one service name, for every route. Three collector processors in the traces pipeline split it, in both `deploy/openshift/telemetry/collector.yaml` and the k3d `deploy/helm-values/opentelemetry-collector.yaml`: `transform/gateway` tags each gateway span with `gateway.name` (`mcp-gateway` when `apisix.route_id` starts with `mcp-`, else `api-gateway`) and renames the `apisix.*` keys; `groupbyattrs/gateway` moves that tag to the resource, splitting the batch in two; `transform/gateway_resource` makes it the service name and replaces the host and pod names. Other services' spans don't match and pass through. Tested with the collector and sample spans before deploying.
+
+**Moved with the names:** the dashboards (`build.py`, regenerated), the alert rules, the console's request-flow view (`flow.py`), the evidence collector (`collect.py`), the acceptance tests, and the metric names in OBSERVABILITY.md and DETECTION.md. Older decisions keep the old names, as written at the time. On k3d the chart's own ServiceMonitor has no relabelings, so its scrape labels still say `apisix`.
+
+**Rolling back.** The change is one commit, and the tag `pre-gateway-rename` marks the deployed state before it. To undo: `git revert <the D-071 commit>`, push, `TARGET=openshift scripts/openshift/build-images.sh` (the gateway bootstrap job re-applies the plugin configs and metadata), then refresh Argo CD. Telemetry already recorded keeps the names it was written with: after the change, earlier metrics stay under `apisix_*` and earlier traces under `apisix`, and after a rollback the same is true the other way round.

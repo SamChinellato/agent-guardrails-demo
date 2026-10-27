@@ -51,6 +51,30 @@ spec:
           - context: resource
             statements:
               - set(attributes["kubernetes.namespace_name"], attributes["k8s.namespace.name"])
+      # The gateway's spans (D-071): APISIX sets one service name for every route, so the
+      # collector splits them. /mcp routes become mcp-gateway, the rest api-gateway, and the
+      # product's name is taken off attribute keys and pod names. Remove these three
+      # processors from the traces pipeline to undo it.
+      transform/gateway:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'set(span.attributes["gateway.name"], "mcp-gateway") where resource.attributes["service.name"] == "api-gateway" and IsMatch(span.attributes["apisix.route_id"], "^mcp-")'
+              - 'set(span.attributes["gateway.name"], "api-gateway") where resource.attributes["service.name"] == "api-gateway" and span.attributes["gateway.name"] == nil'
+              - 'replace_all_patterns(span.attributes, "key", "^apisix\\.", "gateway.") where resource.attributes["service.name"] == "api-gateway"'
+      groupbyattrs/gateway:
+        keys: [gateway.name]
+      transform/gateway_resource:
+        error_mode: ignore
+        trace_statements:
+          - context: resource
+            statements:
+              - 'set(resource.attributes["service.name"], resource.attributes["gateway.name"]) where resource.attributes["gateway.name"] != nil'
+              - 'set(resource.attributes["hostname"], "gateway") where resource.attributes["gateway.name"] != nil'
+              - 'set(resource.attributes["k8s.deployment.name"], "gateway") where resource.attributes["gateway.name"] != nil and resource.attributes["k8s.deployment.name"] != nil'
+              - 'replace_pattern(resource.attributes["k8s.pod.name"], "^apisix", "gateway") where resource.attributes["gateway.name"] != nil'
+              - 'delete_key(resource.attributes, "gateway.name")'
     exporters:
       otlp_grpc/tempo:
         endpoint: tempo-tempo-gateway.aigw-observability.svc.cluster.local:4317
@@ -76,7 +100,7 @@ spec:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8s_attributes, batch]
+          processors: [memory_limiter, k8s_attributes, transform/gateway, groupbyattrs/gateway, transform/gateway_resource, batch]
           exporters: [otlp_grpc/tempo]
         logs:
           receivers: [otlp]

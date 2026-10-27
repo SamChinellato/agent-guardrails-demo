@@ -429,7 +429,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (consumer) (rate(apisix_http_status{code=\"503\"}[1m])) * 60",
+          "expr": "sum by (consumer) (rate(gateway_http_status{code=\"503\"}[1m])) * 60",
           "legendFormat": "{{consumer}}",
           "refId": "A"
         }

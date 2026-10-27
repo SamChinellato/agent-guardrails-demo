@@ -69,10 +69,10 @@ def loki_streams(loki, query, since_s=300) -> list[dict]:
 # ---------------------------------------------------------------- traces (OBS-01/02/06/07)
 def test_trace_reaches_tempo_within_15s_with_gateway_as_parent(traced_request, tempo):
     trace_id, sent = traced_request
-    poll(lambda: {"apisix", "mock-llm"} <= trace_services(tempo, trace_id).keys(), timeout=FRESHNESS_S)
+    poll(lambda: {"api-gateway", "mock-llm"} <= trace_services(tempo, trace_id).keys(), timeout=FRESHNESS_S)
     spans = trace_services(tempo, trace_id)
-    gateway_ids = {s["spanId"] for s in spans["apisix"]}
-    # mock-llm's server span is a child of the APISIX span (OBS-02)
+    gateway_ids = {s["spanId"] for s in spans["api-gateway"]}
+    # mock-llm's server span is a child of the gateway's span (OBS-02)
     assert any(s.get("parentSpanId") in gateway_ids for s in spans["mock-llm"])
     print(f"trace visible {time.time() - sent:.1f}s after the request")
 
@@ -82,14 +82,14 @@ def test_logs_for_the_trace_reach_loki_within_15s(traced_request, loki):
     trace_id, _ = traced_request
     query = f'{{service_name=~".+"}} | json | trace_id="{trace_id}"'
     poll(
-        lambda: {"apisix", "mock-llm"} <= {s["stream"]["service_name"] for s in loki_streams(loki, query)},
+        lambda: {"api-gateway", "mock-llm"} <= {s["stream"]["service_name"] for s in loki_streams(loki, query)},
         timeout=FRESHNESS_S,
     )
 
 
 def test_gateway_access_log_has_required_fields_and_no_bodies(traced_request, loki):
     trace_id, _ = traced_request
-    query = f'{{service_name="apisix"}} | json | trace_id="{trace_id}"'
+    query = f'{{service_name="api-gateway"}} | json | trace_id="{trace_id}"'
     poll(lambda: bool(loki_streams(loki, query)), timeout=FRESHNESS_S)
     stream = loki_streams(loki, query)[0]
     fields = stream["stream"]
@@ -98,7 +98,7 @@ def test_gateway_access_log_has_required_fields_and_no_bodies(traced_request, lo
     # X-Demo-Scenario: smoke is a scripted run, served by the llm-scripted route (D-032)
     assert fields["consumer"] == "researcher" and fields["route_id"] == "llm-scripted"
     # GW-06: request and response bodies are never logged
-    everything = loki_streams(loki, f'{{service_name="apisix"}} |= "{MARKER}"')
+    everything = loki_streams(loki, f'{{service_name=~"api-gateway|mcp-gateway"}} |= "{MARKER}"')
     assert everything == []
 
 
@@ -113,17 +113,17 @@ def test_service_logs_are_json_with_trace_context(traced_request, loki):
 def test_gateway_metrics_by_route_and_consumer(traced_request, prometheus):
     def has_series():
         r = prometheus.get(
-            "/api/v1/query", params={"query": 'apisix_http_status{route="llm-scripted", consumer="researcher", code="200"}'}
+            "/api/v1/query", params={"query": 'gateway_http_status{route="llm-scripted", consumer="researcher", code="200"}'}
         )
         return bool(r.json()["data"]["result"])
 
     poll(has_series, timeout=FRESHNESS_S)
-    latency = prometheus.get("/api/v1/query", params={"query": 'apisix_http_latency_count{route="llm-scripted"}'}).json()
+    latency = prometheus.get("/api/v1/query", params={"query": 'gateway_http_latency_count{route="llm-scripted"}'}).json()
     assert latency["data"]["result"]
 
 
 def test_gateway_measures_llm_tokens_per_agent(traced_request, prometheus):
-    r = prometheus.get("/api/v1/query", params={"query": 'sum by (consumer) (apisix_llm_prompt_tokens)'}).json()
+    r = prometheus.get("/api/v1/query", params={"query": 'sum by (consumer) (gateway_llm_prompt_tokens)'}).json()
     assert "researcher" in {s["metric"].get("consumer") for s in r["data"]["result"]}
 
 
