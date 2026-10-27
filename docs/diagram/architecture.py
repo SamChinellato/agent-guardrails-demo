@@ -7,8 +7,10 @@ component means choosing where it goes. The icons are in icons/ (see icons/READM
 products keep their own logos, everything else is an IBM Carbon pictogram, the MCP gateway the
 Model Context Protocol logo and the agents AWS's Generic Application icon.
 
-Black arrows are requests, red ones control (the circuit breaker), dashed ones telemetry and dotted
-ones deployment. The gateway is one deployment, drawn as the two gateways its routes form (D-068).
+Black arrows are requests, red ones control (anomaly alerts stopping an agent or its tools),
+dashed ones telemetry and dotted ones deployment. The gateways are drawn calling out to the guard
+(the policy engine and the classifier) and waiting for its answer, as the Interact Gateway
+integration does; in today's APISIX demo the guard sits inline on /mcp as an MCP proxy (D-070). The gateway is one deployment, drawn as the two gateways its routes form (D-068).
 
 TARGET=k3d (default) draws the laptop demo: k3d, the LLM on the host, no sign-in. TARGET=openshift
 draws the same demo on OpenShift (D-062): user authentication in front, the LLM in the cluster and
@@ -97,7 +99,7 @@ else:
     group(220, 70, 2380, 1160, "This machine", color=GREY, dash="10 7")
     group(690, 115, 2350, 1130, "Kubernetes cluster (k3d)", color="#326ce5", logo="kubernetes.svg")
 group(1130, 360, 1510, 560, "Agents", bold=True)
-group(1770, 140, 2040, 560, "Guard", bold=True)
+group(1130, 615, 1510, 800, "Guard", bold=True)
 group(2100, 360, 2320, 740, "Tools", bold=True)
 group(760, 880, 2320, 1100, "Observability", bold=True)
 
@@ -113,18 +115,19 @@ else:
     arrow((110, Y+75), (110, 990), (812, 990), kind="tel")      # user → Grafana
     arrow((1000, Y-40), (1000, 200), (478, 200))                # API gateway → LLM on the host
 arrow((850, Y), (962, Y))                                       # console → API gateway
-arrow((1030, Y-40), (1030, 330), (1762, 330))                   # prompt check → guard
 arrow((1058, Y), (1122, Y), both=True)                          # API gateway ⇄ agents
 arrow((1510, Y), (1602, Y))                                     # agents → MCP gateway
-arrow((1698, Y), (1852, Y))                                     # MCP gateway → policy engine
-arrow((1905, Y-40), (1905, 318))                                # policy engine → classifier
-arrow((1958, Y), (2092, Y))                                     # policy engine → tools
-arrow((990, Y+96), (990, 872), kind="tel")                      # API gateway → observability
-arrow((1630, Y+96), (1630, 872), kind="tel")                    # MCP gateway → observability
-arrow((1310, 690), (1310, 640), (1030, 640), (1030, Y+104), kind="ctl")   # breaker stops agents
-arrow((1350, 690), (1350, 640), (1670, 640), (1670, Y+104), kind="ctl")   # breaker stops tools
-arrow((1860, 560), (1860, 730), (1378, 730), kind="ctl")        # guard auto-trip
-arrow((1330, 950), (1330, 828), kind="ctl")                     # Prometheus alerts
+arrow((1698, Y), (2092, Y))                                     # MCP gateway → tools
+# The gateways call out to the guard and wait for its answer (the Interact Gateway model, D-070)
+arrow((1040, Y+104), (1040, 715), (1182, 715), both=True)       # API gateway ⇄ classifier: the prompt
+arrow((1620, Y+104), (1620, 715), (1458, 715), both=True)       # MCP gateway ⇄ policy engine: call and result
+arrow((1362, 715), (1278, 715))                                 # policy engine → classifier: the result
+arrow((980, Y+96), (980, 872), kind="tel")                      # API gateway → observability
+arrow((1690, Y+96), (1690, 872), kind="tel")                    # MCP gateway → observability
+# Prometheus's anomaly alerts, one trunk branching to both gateways and the policy engine
+arrow((1330, 950), (1330, 840), (1010, 840), (1010, Y+104), kind="ctl")
+arrow((1330, 950), (1330, 840), (1650, 840), (1650, Y+104), kind="ctl")
+arrow((1330, 950), (1330, 840), (1410, 840), (1410, 806), kind="ctl")
 
 # Icons
 icon("user.svg", 110, Y, "User")
@@ -139,11 +142,10 @@ icon("api-gateway.svg", 1010, Y, "API gateway", "/llm · /agents")
 icon("agent.svg", 1230, Y+15, "Researcher")
 icon("agent.svg", 1410, Y+15, "Executor")
 icon("mcp-gateway.svg", 1650, Y, "MCP gateway", "/mcp")
-icon("classifier.svg", 1905, 240, "Injection classifier")
-icon("policy-engine.svg", 1905, Y, "Policy engine")
+icon("classifier.svg", 1230, 715, "Injection classifier")
+icon("policy-engine.svg", 1410, 715, "Policy engine")
 icon("documents.svg", 2210, Y+15, "Documents")
 icon("records.svg", 2210, 625, "Records · email")
-icon("circuit-breaker.svg", 1330, 730, "Circuit breaker")
 icon("grafana.png", 860, 990, "Grafana")
 icon("loki.png", 1095, 990, "LokiStack" if OPENSHIFT else "Loki", "logs")
 icon("prometheus.png", 1330, 990, "Prometheus", "metrics · alerts")
@@ -151,19 +153,19 @@ icon("tempo.png", 1700, 990, "Tempo", "traces")
 icon("collector.svg", 2080, 990, "Collector", "OpenTelemetry")
 
 # Numbered steps, at the thing that does each one
-for n, (x, y) in enumerate([(482, Y-48) if OPENSHIFT else (160, Y-48), (860, Y-48), (1400, 330), (1495, 375),
-                            (1710, Y-48), (2020, 158), (2300, 900), (1395, 690)], start=1):
+for n, (x, y) in enumerate([(482, Y-48) if OPENSHIFT else (160, Y-48), (860, Y-48), (1110, 690), (1495, 375),
+                            (1710, Y-48), (1495, 630), (2300, 900), (1290, 905)], start=1):
     badge(x, y, n)
 
 steps = [
     "The user signs in through user authentication." if OPENSHIFT else "The user opens the chat console.",
     "The chat console sends the user's request to the API gateway.",
-    "The guard checks the prompt for injection before anything runs.",
+    "The API gateway asks the guard's classifier whether the prompt is an injection.",
     "The API gateway hands the request to an agent; its model calls go back through the gateway.",
     "Agents reach tools only through the MCP gateway, each with its own key.",
-    "The policy engine checks every tool call; the classifier checks what tools return.",
+    "The MCP gateway asks the policy engine about every tool call, and again about its result.",
     "Both gateways send traces, logs and metrics to observability.",
-    "An anomaly alert or a guard auto-trip opens the circuit breaker: it stops an agent or tools.",
+    "Anomaly alerts tell the gateways and the policy engine to stop an agent or its tools.",
 ]
 for i, s in enumerate(steps):
     x, y = (240 if i < 4 else 1300), 1225 + (i % 4) * 56

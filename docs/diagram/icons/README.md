@@ -13,7 +13,6 @@ The icons `architecture.py` draws, kept here so `make diagram` downloads nothing
 | `policy-engine.svg` | IBM Carbon pictograms 12.87.0 | `security--shield` | Apache-2.0 |
 | `documents.svg` | IBM Carbon pictograms 12.87.0 | `documentation` | Apache-2.0 |
 | `records.svg` | IBM Carbon pictograms 12.87.0 | `database` | Apache-2.0 |
-| `circuit-breaker.svg` | IBM Carbon pictograms 12.87.0 | `f1--pit-stop-traffic-light` | Apache-2.0 |
 | `collector.svg` | IBM Carbon pictograms 12.87.0 | `streaming-data` | Apache-2.0 |
 | `mcp-gateway.svg` | IBM Carbon icons 11.91.0 | `logo--model-context-protocol` (32 px) | Apache-2.0 |
 | `agent.svg` | AWS Architecture Icons, via the `aws-icons` npm package 3.3.0 | `Res_Generic-Application_48_Light` | AWS icon terms: free to use in architecture diagrams |
