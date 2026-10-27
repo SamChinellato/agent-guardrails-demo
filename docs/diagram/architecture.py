@@ -7,7 +7,7 @@ component means choosing where it goes. The icons are in icons/ (see icons/READM
 products keep their own logos, everything else is an IBM Carbon pictogram, the MCP gateway the
 Model Context Protocol logo and the agents AWS's Generic Application icon.
 
-Black arrows are requests, red ones control (anomaly alerts stopping an agent or its tools),
+Black arrows are invocations, blue ones policy checks (a gateway asking the guard), red ones control (anomaly alerts stopping an agent or its tools),
 dashed ones telemetry and dotted ones deployment. The gateways are drawn calling out to the guard
 (the policy engine and the classifier) and waiting for its answer, as the Interact Gateway
 integration does; in today's APISIX demo the guard sits inline on /mcp as an MCP proxy (D-070). The gateway is one deployment, drawn as the two gateways its routes form (D-068).
@@ -26,7 +26,7 @@ import re
 OPENSHIFT = os.environ.get("TARGET", "k3d") == "openshift"
 ICONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
 
-INK, GREY, RED, TEAL, MUTED = "#16191f", "#7d8998", "#c8322f", "#00a4a6", "#5f6b7a"
+INK, GREY, RED, TEAL, MUTED, BLUE = "#16191f", "#7d8998", "#c8322f", "#00a4a6", "#5f6b7a", "#0f62fe"
 FONT = "Liberation Sans, Arial, Helvetica, sans-serif"
 W, H = 2420, 1500
 ICON = 80
@@ -74,7 +74,7 @@ def group(x1, y1, x2, y2, title, color=INK, dash=None, logo=None, bold=False):
     out.append(f'<text x="{tx}" y="{y1+30}" font-size="21" fill="{INK}"{w}>{title}</text>')
 
 
-STYLE = {"req": (INK, None, "a"), "ctl": (RED, None, "r"), "tel": (GREY, "8 6", "g"), "dep": (GREY, "2 5", "g")}
+STYLE = {"req": (INK, None, "a"), "chk": (BLUE, None, "b"), "ctl": (RED, None, "r"), "tel": (GREY, "8 6", "g"), "dep": (GREY, "2 5", "g")}
 
 
 def arrow(*pts, kind="req", both=False):
@@ -119,9 +119,9 @@ arrow((1058, Y), (1122, Y), both=True)                          # API gateway �
 arrow((1510, Y), (1602, Y))                                     # agents → MCP gateway
 arrow((1698, Y), (2092, Y))                                     # MCP gateway → tools
 # The gateways call out to the guard and wait for its answer (the Interact Gateway model, D-070)
-arrow((1040, Y+104), (1040, 715), (1182, 715), both=True)       # API gateway ⇄ classifier: the prompt
-arrow((1620, Y+104), (1620, 715), (1458, 715), both=True)       # MCP gateway ⇄ policy engine: call and result
-arrow((1362, 715), (1278, 715))                                 # policy engine → classifier: the result
+arrow((1040, Y+104), (1040, 715), (1182, 715), kind="chk", both=True)       # API gateway ⇄ classifier: the prompt
+arrow((1620, Y+104), (1620, 715), (1458, 715), kind="chk", both=True)       # MCP gateway ⇄ policy engine: call and result
+arrow((1362, 715), (1278, 715), kind="chk")                                 # policy engine → classifier: the result
 arrow((980, Y+96), (980, 872), kind="tel")                      # API gateway → observability
 arrow((1690, Y+96), (1690, 872), kind="tel")                    # MCP gateway → observability
 # Prometheus's anomaly alerts, one trunk branching to both gateways and the policy engine
@@ -172,9 +172,9 @@ for i, s in enumerate(steps):
     badge(x, y, i + 1)
     out.append(f'<text x="{x+34}" y="{y+7}" font-size="19" fill="{INK}">{s}</text>')
 
-key = [("req", "request"), ("ctl", "control"), ("tel", "telemetry")] + ([("dep", "deployment")] if OPENSHIFT else [])
+key = [("req", "invocation"), ("chk", "policy check"), ("ctl", "control"), ("tel", "telemetry")] + ([("dep", "deployment")] if OPENSHIFT else [])
 for i, (k, name) in enumerate(key):
-    x = 2380 - (len(key) - i) * 170
+    x = 2380 - (len(key) - i) * 175
     color, dash, _ = STYLE[k]
     d = f' stroke-dasharray="{dash}"' if dash else ""
     out.append(f'<line x1="{x}" y1="1180" x2="{x+50}" y2="1180" stroke="{color}" stroke-width="2.4"{d}/>'
@@ -184,7 +184,7 @@ defs = "".join(
     f'<marker id="{m}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">'
     f'<path d="M0,0 L10,5 L0,10 z" fill="{c}"/></marker>'
     f'<marker id="{m}s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="5" markerHeight="5" orient="auto">'
-    f'<path d="M10,0 L0,5 L10,10 z" fill="{c}"/></marker>' for m, c in [("a", INK), ("r", RED), ("g", GREY)])
+    f'<path d="M10,0 L0,5 L10,10 z" fill="{c}"/></marker>' for m, c in [("a", INK), ("b", BLUE), ("r", RED), ("g", GREY)])
 svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" font-family="{FONT}">'
        f'<defs>{defs}</defs><rect width="100%" height="100%" fill="white"/>' + "".join(out) + "</svg>")
 with open("/out/architecture-openshift.svg" if OPENSHIFT else "/out/architecture.svg", "w") as f:

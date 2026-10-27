@@ -841,7 +841,7 @@ At the operator's request (2026-10-27), after comparing the old Graphviz picture
 **Layout.** `docs/diagram/architecture.py` no longer uses the `diagrams` library and Graphviz's automatic layout. It writes an SVG with every icon, group and arrow at a fixed position, and `scripts/diagram.sh` turns it into the PNG with `rsvg-convert`. Graphviz kept moving boxes around and crossing lines whenever something changed; a fixed grid gives the clean picture, at the cost of choosing a position for anything new. It follows the AWS architecture-icon guidelines:
 
 - One main flow, left to right: user → (authentication) → chat console → API gateway → agents → MCP gateway → tools. The LLM sits above the API gateway, the guard below the agents and observability at the bottom.
-- Square-cornered arrows with no labels and no crossings. Black is a request, red control, dashed telemetry, dotted deployment, with a key under the picture.
+- Square-cornered arrows with no labels and no crossings. Black is an invocation (the path a call takes), blue a policy check (a gateway asking the guard and waiting for its answer), red control, dashed telemetry, dotted deployment, with a key under the picture.
 - Numbered black badges (1–8) at the parts that act, explained in a legend under the picture, instead of arrow labels.
 - Few groups, outlined only: the cluster with a corner tab carrying its logo (OpenShift, or Kubernetes for k3d), the namespaces dashed, and plain boxes for Agents, Guard, Tools and Observability. The two gateways have no boxes of their own; their names say which is which (D-068).
 - Short names under the icons, with at most one grey detail line.
