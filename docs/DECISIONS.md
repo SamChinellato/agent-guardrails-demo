@@ -833,3 +833,19 @@ At the operator's request (2026-10-27):
 A message sent while an agent is already suspended is explained the same way, worded with "still" ("Researcher still suspended: anomalous behaviour detected") and adding that it lasts until a new chat. When the gateway's 503 reaches the console, its incident ID names the trip. Usually it doesn't: the agent meets the 503 on its own LLM or tool call and answers 200 with `halted_by_kill_switch`, so the console takes the newest trip of an engaged scope covering the agent (its own, `tools` or `global`). The agent's canned "Halted: …" reply is no longer shown as an answer, since the notice explains it. If nothing can be found, the old generic notice is shown.
 
 **Fewer words on two notices** (2026-10-27). The blocked-phrase notice no longer ends "Try rephrasing it." For the poisoned-document story prompt (Meridian), the console shows only *A document was withheld*, without the agent's answer, and that notice no longer says the answer is based on the rest. Other replies that touched a withheld document, such as an upload in live chat, still show their answer.
+
+## D-070: The architecture diagram is drawn on a grid, in the style of AWS architecture diagrams
+
+At the operator's request (2026-10-27), after comparing the old Graphviz picture with an AWS reference diagram:
+
+**Layout.** `docs/diagram/architecture.py` no longer uses the `diagrams` library and Graphviz's automatic layout. It writes an SVG with every icon, group and arrow at a fixed position, and `scripts/diagram.sh` turns it into the PNG with `rsvg-convert`. Graphviz kept moving boxes around and crossing lines whenever something changed; a fixed grid gives the clean picture, at the cost of choosing a position for anything new. It follows the AWS architecture-icon guidelines:
+
+- One main flow, left to right: user → (authentication) → chat console → API gateway → agents → MCP gateway → policy engine → tools. The LLM and the classifier sit above what calls them, and the circuit breaker and observability below.
+- Square-cornered arrows with no labels and no crossings. Black is a request, red control, dashed telemetry, dotted deployment, with a key under the picture.
+- Numbered black badges (1–8) at the parts that act, explained in a legend under the picture, instead of arrow labels.
+- Few groups, outlined only: the cluster with a corner tab carrying its logo (OpenShift, or Kubernetes for k3d), the namespaces dashed, and plain boxes for Agents, Guard, Tools and Observability. The two gateways have no boxes of their own; their names say which is which (D-068).
+- Short names under the icons, with at most one grey detail line.
+
+**Icons.** The products keep their logos (OpenShift, Kubernetes, Argo CD, Grafana, Loki, Prometheus, Tempo). Everything else is from IBM's Carbon pictograms, one thin line style, except two: the MCP gateway is the Model Context Protocol logo from Carbon's icon set, and the agents are AWS's Generic Application icon. The circuit breaker is a pit-stop traffic light. The files are in `docs/diagram/icons/`, so rendering downloads nothing but two Debian packages; `icons/README.md` lists where each came from and its licence. Three whole sets were tried first (Carbon icons, Carbon pictograms, AWS resource icons); the pictograms were picked.
+
+**Wording.** The OpenShift router is gone from the picture, and OpenShift login is **user authentication**. The person is the **user**, not "you" or the analyst. The k3d variant has no authentication, Argo CD or deployment arrow, and its LLM sits outside the cluster, on the host.
