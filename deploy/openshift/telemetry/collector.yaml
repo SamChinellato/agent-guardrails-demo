@@ -75,6 +75,18 @@ spec:
               - 'set(resource.attributes["k8s.deployment.name"], "gateway") where resource.attributes["gateway.name"] != nil and resource.attributes["k8s.deployment.name"] != nil'
               - 'replace_pattern(resource.attributes["k8s.pod.name"], "^apisix", "gateway") where resource.attributes["gateway.name"] != nil'
               - 'delete_key(resource.attributes, "gateway.name")'
+      # The gateway's Service is still apisix-gateway (D-071), so its DNS name turns up in URLs
+      # on spans and in the agents' HTTP log lines. Displayed text only; nothing resolves it.
+      transform/gateway_hostname:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'replace_all_patterns(span.attributes, "value", "apisix-gateway\\.", "gateway.")'
+        log_statements:
+          - context: log
+            statements:
+              - 'replace_pattern(log.body, "apisix-gateway\\.", "gateway.")'
     exporters:
       otlp_grpc/tempo:
         endpoint: tempo-tempo-gateway.aigw-observability.svc.cluster.local:4317
@@ -100,11 +112,11 @@ spec:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, k8s_attributes, transform/gateway, groupbyattrs/gateway, transform/gateway_resource, batch]
+          processors: [memory_limiter, k8s_attributes, transform/gateway, transform/gateway_hostname, groupbyattrs/gateway, transform/gateway_resource, batch]
           exporters: [otlp_grpc/tempo]
         logs:
           receivers: [otlp]
-          processors: [memory_limiter, k8s_attributes, transform/logs, batch]
+          processors: [memory_limiter, k8s_attributes, transform/logs, transform/gateway_hostname, batch]
           exporters: [otlp_http/loki]
         metrics:
           receivers: [otlp]
