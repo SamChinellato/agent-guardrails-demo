@@ -4,7 +4,12 @@
   POST /chat {messages, scenario_id?, max_steps?}     a conversation, for the console (DEMO-01)
 
 The researcher has one local tool, handoff_to_executor, which calls the executor through
-the gateway as consumer "researcher" (F4). Both return {status, reply, trace_id, events}.
+the gateway as consumer "researcher" (F4). Both return {status, reply, trace_id, events,
+identity}.
+
+On OpenShift a task can carry the signed-in person's token (X-Subject-Token, D-072): the agent
+exchanges it for its own on-behalf-of token, and the hand-off passes the researcher's on to the
+executor, which exchanges it again. identity lists those tokens' claims, never the tokens.
 """
 
 
@@ -13,6 +18,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
 
+from agents import obo
 from agents.loop import Agent, Config
 from demo_common import create_app, get_logger, run
 
@@ -59,12 +65,15 @@ def build_agent(agent_id: str) -> Agent:
             instruction = (args.get("summary") or "").strip() + "\n\nAction items:\n" + "\n".join(f"- {i}" for i in items)
             with tracer.start_as_current_span("agent.handoff", attributes={"handoff.to": "executor",
                                                                          "handoff.items": len(items)}) as span:
+                headers = {"apikey": cfg.api_key, "X-Demo-Scenario": scenario}
+                if token := obo.current.get():   # the executor acts for the same person (D-072)
+                    headers["X-Subject-Token"] = token
                 try:
                     async with httpx.AsyncClient(timeout=300) as client:
                         r = await client.post(
                             f"{cfg.gateway}/agents/executor/task",
                             json={"instruction": instruction, "scenario_id": scenario},
-                            headers={"apikey": cfg.api_key, "X-Demo-Scenario": scenario},
+                            headers=headers,
                         )
                 except httpx.HTTPError as e:
                     return "error", f"executor unreachable: {e}", []
@@ -77,6 +86,7 @@ def build_agent(agent_id: str) -> Agent:
                 # The executor's own tool calls, so the operator sees the whole chain (ATK-03)
                 nested = [{**e, "agent": "executor"} for e in body.get("events", [])]
                 nested.append({"type": "agent", "agent": "executor", "status": body["status"]})
+                nested += [{"type": "identity", **i} for i in body.get("identity", [])]
                 return "ok", f"Executor result (status {body['status']}): {body['reply']}", nested
 
         return Agent(cfg, {"handoff_to_executor": (HANDOFF_TOOL, handoff)})
@@ -87,14 +97,29 @@ def build_app(agent_id: str):
     app = create_app(agent_id)
     agent = build_agent(agent_id)
 
+    async def acting_for(request: Request) -> str | None:
+        """This agent's OBO token for the person behind the request, if any (D-072)."""
+        subject = request.headers.get("x-subject-token")
+        if not subject or not obo.enabled():
+            return None
+        return await obo.exchange(subject)
+
+    def refused(e: Exception) -> JSONResponse:
+        return JSONResponse({"status": "error", "reply": f"The {agent_id} couldn't act on your behalf: {e}",
+                             "trace_id": "", "task_id": "", "events": [], "identity": []})
+
     @app.post("/task")
     async def task(request: Request) -> JSONResponse:
         body = await request.json()
         instruction = body.get("instruction") or ""
         if not instruction:
             return JSONResponse({"error": "instruction is required"}, 400)
+        try:
+            token = await acting_for(request)
+        except (obo.ExchangeRefused, httpx.HTTPError) as e:
+            return refused(e)
         result = await agent.run([{"role": "user", "content": instruction}], body.get("scenario_id") or "",
-                                 body.get("max_steps"))
+                                 body.get("max_steps"), obo_token=token)
         return JSONResponse(result.as_dict())
 
     @app.post("/chat")
@@ -105,7 +130,12 @@ def build_app(agent_id: str):
         if not messages or messages[-1]["role"] != "user":
             return JSONResponse({"error": "messages must end with a user message"}, 400)
         # Chat answers questions; hand-offs belong to tasks (the console's chat stays on topic)
-        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"), local_tools=False)
+        try:
+            token = await acting_for(request)
+        except (obo.ExchangeRefused, httpx.HTTPError) as e:
+            return refused(e)
+        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"), local_tools=False,
+                                 obo_token=token)
         return JSONResponse(result.as_dict())
 
     return app

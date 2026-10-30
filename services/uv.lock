@@ -26,12 +26,14 @@ source = { editable = "agents" }
 dependencies = [
     { name = "demo-common", extra = ["mcp"] },
     { name = "openai" },
+    { name = "pyjwt" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "demo-common", extras = ["mcp"], editable = "common" },
     { name = "openai", specifier = ">=2,<4" },
+    { name = "pyjwt", specifier = ">=2.10,<3" },
 ]
 
 [[package]]
@@ -331,6 +333,7 @@ dependencies = [
     { name = "demo-common" },
     { name = "numpy" },
     { name = "onnxruntime" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
     { name = "tokenizers" },
 ]
@@ -340,6 +343,7 @@ requires-dist = [
     { name = "demo-common", editable = "common" },
     { name = "numpy", specifier = ">=2,<3" },
     { name = "onnxruntime", specifier = ">=1.20,<2" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
     { name = "tokenizers", specifier = ">=0.20,<1" },
 ]

@@ -893,6 +893,14 @@ At the operator's request (2026-10-30), the demo gets real users, so it can show
 
 **The network.** Verify is a SaaS tenant, so this is the second exception to NFR-08, after `gguf-fetch`, and the operator accepted it. The NetworkPolicy `verify-egress` lets the console reach public addresses on 443, with cluster and node networks excluded; a NetworkPolicy can't name a host. OVN-Kubernetes' EgressFirewall can name one (`dnsName`), and is the way to narrow this to the tenant.
 
+**The agents act for the person** (phase 4; [IDENTITY.md](IDENTITY.md#how-the-agents-act-for-a-person) has the flow). The console sends the person's token to the researcher. Each agent exchanges what it receives for its own on-behalf-of token: the researcher exchanges the person's token, and the executor exchanges the researcher's. Each agent sends its token only on tool calls, where the guard checks it. The smoke test settled three things:
+
+- **The agent is named by the token's audience.** Verify puts no `act` claim in the token, so the guard pairs the audience with the agent the gateway authenticated by its key.
+- **The exchange chains.** The executor can exchange the researcher's OBO token, so the hand-off passes that token on rather than the person's own.
+- **Groups come with every token.** They arrive as a string in OBO tokens and a list in the person's own.
+
+The new check, `mcp.user_entitlement` (severity high), runs after the agent's allowlist and argument rules, so a critical breach still trips the circuit breaker. A refusal because of the person's group doesn't trip it: the agent did nothing wrong, the person just may not. Calls without a token skip the check, which keeps k3d and the anonymous console unchanged.
+
 **What a person sees.** A sign-in page in the console's own style, with a heading and one **Sign in with IBM Verify** button. A failed sign-in comes back to that page with the reason. Once signed in, a user menu on the right of the header shows the person's initial and name; it opens to their name, username and **Sign out**, which ends the Verify session too. Neither the page nor the menu shows the person's group or the demo accounts: the group shows only in what the agents may do. Without sign-in (k3d, `AUTH_MODE=none`) the header is unchanged.
 
 **Not yet decided.** The console's Route still passes through the OpenShift OAuth proxy, so a presenter signs in twice: first to OpenShift, then to Verify. Once Verify sign-in works, the Route can go straight to APISIX's `/console/` and Verify becomes the only gate.

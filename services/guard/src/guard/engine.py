@@ -60,6 +60,9 @@ class Subject:
     tool: str | None = None  # "server.tool" for tool checks
     arguments: dict = field(default_factory=dict)
     origin: str = "external"
+    user: str | None = None  # the person the agent acts for, from its verified OBO token (D-072)
+    groups: list[str] = field(default_factory=list)
+    user_error: str | None = None  # why the OBO token was rejected, if it was
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,7 @@ class Decision:
     trace_id: str | None
     span_id: str | None
     agent: str
+    user: str | None
     check: str
     mode: str
     severity: str
@@ -107,6 +111,8 @@ class LocalDecider:
             return self._allowlist(policy, s)
         if s.check == "mcp.argument_rules":
             return self._arguments(policy, s)
+        if s.check == "mcp.user_entitlement":
+            return self._entitlement(policy, s)
         raise ValueError(f"no decider for {s.check}")
 
     def _injection(self, policy: Policy, s: Subject) -> Judgement:
@@ -156,6 +162,19 @@ class LocalDecider:
                 return Judgement(True, 1.0, "fields_allow",
                                  f"fields {extra} may not be changed (allowed: {', '.join(allowed)})")
         return Judgement(False, 0.0, None, "arguments within the policy" if rules else "no argument rules for this tool")
+
+
+    def _entitlement(self, policy: Policy, s: Subject) -> Judgement:
+        if s.user_error:
+            return Judgement(True, 1.0, "user_token", f"the {s.agent}'s token for the user was rejected: {s.user_error}")
+        if not s.user:
+            return Judgement(False, 0.0, None, "no user token: the caller isn't acting for a signed-in person")
+        groups = ", ".join(s.groups) or "none"
+        if s.tool not in policy.user_tools(s.groups):
+            return Judgement(True, 1.0, "user_entitlement",
+                             f"{s.user} may not {s.tool}: their groups ({groups}) don't allow it, "
+                             f"so the {s.agent} may not do it for them")
+        return Judgement(False, 0.0, None, f"{s.user} may {s.tool} (groups: {groups})")
 
 
 class SeenTexts:
@@ -208,6 +227,7 @@ class Engine:
             trace_id=format(ctx.trace_id, "032x") if ctx.is_valid else None,
             span_id=format(ctx.span_id, "016x") if ctx.is_valid else None,
             agent=s.agent,
+            user=s.user,
             check=s.check,
             mode=check.mode,
             severity=check.severity,

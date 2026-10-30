@@ -3,7 +3,7 @@ name = "agents"
 version = "0.1.0"
 description = "The researcher and executor demo agents (7.7): OpenAI SDK + MCP SDK, no framework"
 requires-python = "==3.12.*"
-dependencies = ["demo-common[mcp]", "openai>=2,<4"]
+dependencies = ["demo-common[mcp]", "openai>=2,<4", "pyjwt>=2.10,<3"]
 
 [project.scripts]
 researcher = "agents.app:main_researcher"

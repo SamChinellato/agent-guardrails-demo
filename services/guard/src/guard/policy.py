@@ -25,6 +25,7 @@ CHECKS = {
     "mcp.tool_allowlist",
     "mcp.argument_rules",
     "agent.user_prompt_injection",  # DEMO-02: inbound filter on the agent route
+    "mcp.user_entitlement",  # D-072: an agent acting for a person may only do what they may
 }
 
 
@@ -50,12 +51,17 @@ class Policy:
     agents: dict[str, AgentPolicy]
     deny_tools_all: frozenset[str]
     auto_trip: dict
+    user_groups: dict[str, frozenset[str]] = field(default_factory=dict)   # group -> tools (D-072)
 
     def check(self, name: str) -> Check:
         return self.checks.get(name) or Check(name, "off", "low")
 
     def agent(self, agent_id: str) -> AgentPolicy:
         return self.agents.get(agent_id, AgentPolicy())
+
+    def user_tools(self, groups: list[str]) -> frozenset[str]:
+        """Every tool any of these groups allows an agent to use on the person's behalf."""
+        return frozenset().union(*(self.user_groups.get(g, frozenset()) for g in groups))
 
 
 def parse(text: str) -> Policy:
@@ -84,6 +90,7 @@ def parse(text: str) -> Policy:
         agents=agents,
         deny_tools_all=frozenset(raw.get("deny_tools_all") or []),
         auto_trip=dict(raw.get("auto_trip") or {}),
+        user_groups={g: frozenset(tools or []) for g, tools in ((raw.get("users") or {}).get("groups") or {}).items()},
     )
 
 

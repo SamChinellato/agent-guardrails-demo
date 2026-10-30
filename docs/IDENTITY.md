@@ -18,9 +18,31 @@ researcher ──hand-off──▶ executor ──token exchange──▶ OBO to
 | 0 | Verify tenant: users, groups, three apps (below) | done (`samcverify.verify.ibm.com`, 2026-10-30) |
 | 1 | Smoke test: `scripts/openshift/verify-obo-smoke.py` shows what the tokens carry | passed for claire and dave; findings below |
 | 2 | Console sign-in (`AUTH_MODE=verify`) | live on syd05 (2026-10-30) |
-| 3 | Identity panel: the user's token and each agent's OBO token | after phase 1 |
-| 4 | Agents exchange and send OBO tokens; the guard checks them and decides on groups | after phase 1 |
-| 5 | NetworkPolicy egress to the tenant, Secret, decision trail shows the user | with 2 and 4 |
+| 3 | Sign-in page and user menu; `/api/me` lists the OBO tokens the agents used | live on syd05; a token view is still to do |
+| 4 | Agents exchange and send OBO tokens; the guard checks them and decides on groups | built and tested locally |
+| 5 | NetworkPolicy egress to the tenant, Secret, decision trail shows the user | egress and Secret done; the user is on every decision record |
+
+## How the agents act for a person
+
+1. **The console sends the user's token.** Every request from the signed-in console to the researcher carries the person's access token as `X-Subject-Token`, including story prompts. The token stays server-side; the browser never sees it.
+2. **The researcher swaps it for its own token.** It exchanges the token at Verify with its own client credentials (`agents/obo.py`). The result is a token whose subject is the person and whose audience is the researcher.
+3. **The token goes on tool calls only.** The researcher sends that token as `X-Obo-Token` on its tool calls. It never goes to the LLM, the MCP servers or a log line; the gateway logs no request headers.
+4. **The hand-off passes it on.** The researcher's OBO token goes to the executor as `X-Subject-Token`. The executor exchanges it in turn, getting a token for the same person with the executor as audience.
+5. **The guard checks each tool call** (`guard/obo.py`, `mcp_proxy.py`). It verifies the token's signature against Verify's JWKS, and its issuer, expiry and audience. The audience must be the agent the gateway authenticated by its key, so an agent can't present another agent's token. The guard then runs three checks, in order:
+   1. `mcp.tool_allowlist`: what the agent may do.
+   2. `mcp.argument_rules`: the agent's argument rules.
+   3. `mcp.user_entitlement`: what the person may do, by their groups in the policy's `users.groups`.
+
+   The agent's own policy comes first, so a critical breach, such as the customer export in beat 4, still trips the circuit breaker whoever the agent acts for.
+6. **Every decision names the person.** Decision records carry `user`, and so do the spans' `guard.decision` events. Each agent reports the claims of the token it used, never the token, as `identity`. The console keeps them under `acting_for_you` in `/api/me`.
+
+| | `analyst-readonly` (claire) | `analyst-actions` (dave) |
+|---|---|---|
+| list and read documents | ✓ | ✓ |
+| update a record, send email | ✗ the executor is refused | ✓ within the executor's own argument rules |
+| export customer data | ✗ for everyone (`deny_tools_all`, trips the circuit breaker) | ✗ |
+
+A call with no token is anonymous and skips `mcp.user_entitlement`, as on k3d or with `AUTH_MODE=none`. A token that fails verification blocks the call.
 
 ## What the smoke test found
 
@@ -199,4 +221,4 @@ Open `<CONSOLE>/console/`. You sign in to OpenShift first, then the console show
 
 ## Rollback
 
-Set `AUTH_MODE=none` on the console, or revert the D-072 commits. The anonymous `demo-user` path is unchanged.
+Run `MODE=none scripts/openshift/verify-secret.sh`. The console is anonymous again, sends no tokens, and so every tool call skips `mcp.user_entitlement`. To remove the check outright, run `make policy-set CHECK=mcp.user_entitlement MODE=off`, or revert the D-072 commits.

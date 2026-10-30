@@ -16,6 +16,8 @@ from pathlib import Path
 import httpx
 import yaml
 
+from console_app import identity
+
 GATEWAY = os.environ.get("GATEWAY_URL", "http://apisix-gateway.gateway.svc.cluster.local").rstrip("/")
 KILLSWITCH = os.environ.get("KILLSWITCH_URL", "http://killswitch.gateway.svc.cluster.local:8000").rstrip("/")
 PROMETHEUS = os.environ.get("PROMETHEUS_URL", "http://kps-prometheus.observability.svc.cluster.local:9090").rstrip("/")
@@ -210,13 +212,15 @@ async def task(instruction: str, scenario: str, chat: bool = False, max_steps: i
     else:
         body["instruction"] = instruction
     r = await client.post(f"{GATEWAY}/agents/researcher/{'chat' if chat else 'task'}", json=body,
-                          headers={"apikey": KEYS["demo-user"], "X-Demo-Scenario": scenario})
+                          headers={"apikey": KEYS["demo-user"], "X-Demo-Scenario": scenario,
+                                   **identity.agent_headers()})   # the signed-in person, if any (D-072)
     if r.status_code == 503:
         err = (r.json().get("error") or {}) if "json" in r.headers.get("content-type", "") else {}
         return {"kind": "agent", "status": "halted_by_kill_switch", "reply": "", "events": [], "trace_id": "",
                 **await explain_halt(err.get("incident_id") or (err.get("data") or {}).get("incident_id"))}
     r.raise_for_status()
     data = r.json()
+    identity.remember(data)
     if data.get("status") == "halted_by_kill_switch":
         data.update(await explain_halt())
     return {"kind": "agent", **data}

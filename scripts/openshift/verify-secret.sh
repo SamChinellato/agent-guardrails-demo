@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Create (or update) the verify-oidc Secret in aigw-ai from .secrets/verify.env, then restart
-# the console so it picks it up (D-072, docs/IDENTITY.md). Argo CD never manages Secrets
-# (OS-09); the console reads every key as optional, so without this Secret it stays anonymous.
+# what reads it: the console (sign-in), the agents (token exchange) and the guard (checks the
+# agents' tokens) (D-072, docs/IDENTITY.md). Argo CD never manages Secrets (OS-09); every key is
+# read as optional, so without this Secret the console stays anonymous.
 #
 #   scripts/openshift/verify-secret.sh            # AUTH_MODE=verify: sign in with IBM Verify
 #   MODE=none scripts/openshift/verify-secret.sh  # roll back: anonymous console, Secret kept
@@ -42,6 +43,6 @@ oc -n aigw-ai create secret generic verify-oidc \
   --dry-run=client -o yaml | oc apply -f - >/dev/null
 log "verify-oidc Secret applied (AUTH_MODE=$MODE, redirect URI $REDIRECT)"
 
-oc -n aigw-ai rollout restart deploy/console >/dev/null
-oc -n aigw-ai rollout status deploy/console --timeout=180s
-log "console restarted; open https://aigw-console.$DOMAIN/console/"
+for d in console researcher executor guard; do oc -n aigw-ai rollout restart deploy/$d >/dev/null; done
+for d in console researcher executor guard; do oc -n aigw-ai rollout status deploy/$d --timeout=300s; done
+log "restarted; open https://aigw-console.$DOMAIN/console/"

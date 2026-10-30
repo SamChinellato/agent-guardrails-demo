@@ -9,6 +9,7 @@ dependencies = [
   "tokenizers>=0.20,<1",
   "numpy>=2,<3",
   "pyyaml>=6.0,<7",
+  "pyjwt[crypto]>=2.10,<3",
 ]
 
 [project.scripts]

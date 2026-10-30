@@ -43,7 +43,10 @@ SIGNIN = (Path(__file__).parent / "static" / "signin.html").read_text()
 async def require_sign_in(request: Request, call_next):
     """AUTH_MODE=verify: pages send you to the sign-in page, the API answers 401 (D-072)."""
     path = request.url.path
-    if not identity.enabled() or path.startswith(OPEN) or identity.session(request):
+    if not identity.enabled() or path.startswith(OPEN):
+        return await call_next(request)
+    if (s := identity.session(request)) is not None:
+        identity.current.set(s)   # the agents act for this person (D-072)
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"error": "sign in first"}, 401)
@@ -127,7 +130,8 @@ async def chat(request: Request) -> JSONResponse:
     try:
         async with httpx.AsyncClient(timeout=600) as client:
             r = await client.post(f"{GATEWAY}/agents/researcher/chat", json=payload,
-                                  headers={"apikey": KEY, "X-Demo-Scenario": payload["scenario_id"]})
+                                  headers={"apikey": KEY, "X-Demo-Scenario": payload["scenario_id"],
+                                           **identity.agent_headers()})
     except httpx.HTTPError as e:
         log.error("gateway unreachable", extra={"error": str(e)})
         return JSONResponse({"kind": "error", "message": "The gateway could not be reached."})
@@ -138,6 +142,7 @@ async def chat(request: Request) -> JSONResponse:
     err = data.get("error") if isinstance(data.get("error"), dict) else {}
 
     if r.status_code == 200:
+        identity.remember(data)
         if data.get("status") == "halted_by_kill_switch":  # the agent met an earlier trip (D-069)
             data.update(await scenarios.explain_halt())
         return JSONResponse({"kind": "reply", "trace_id": trace_id, **data})

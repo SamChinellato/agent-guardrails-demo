@@ -18,6 +18,7 @@ import openai
 from opentelemetry import propagate, trace
 from prometheus_client import Counter
 
+from agents import obo
 from agents.tools import GatewayMcp, KillSwitchEngaged
 from demo_common import get_logger
 
@@ -61,10 +62,11 @@ class Result:
     trace_id: str
     task_id: str
     events: list[dict] = field(default_factory=list)
+    identity: list[dict] = field(default_factory=list)   # OBO token summaries, this agent's first (D-072)
 
     def as_dict(self) -> dict:
         return {"status": self.status, "reply": self.reply, "trace_id": self.trace_id,
-                "task_id": self.task_id, "events": self.events}
+                "task_id": self.task_id, "events": self.events, "identity": self.identity}
 
 
 def kill_error(e: openai.APIStatusError) -> bool:
@@ -88,23 +90,33 @@ class Agent:
         return prefix + self.cfg.system_prompt
 
     async def run(self, messages: list[dict], scenario: str, max_steps: int | None = None,
-                  local_tools: bool = True) -> Result:
+                  local_tools: bool = True, obo_token: str | None = None) -> Result:
+        """obo_token: this agent's token for the person it acts for (D-072). It goes on tool
+        calls only, where the guard checks it, and to the hand-off; never to the LLM."""
         task_id = "task-" + uuid.uuid4().hex[:12]
         steps = min(max_steps or self.cfg.max_steps, MAX_STEPS_CAP)
         headers = {"X-Demo-Scenario": scenario} if scenario else {}
+        obo.current.set(obo_token)
         with tracer.start_as_current_span(
             "agent.task",
             attributes={"agent.id": self.cfg.agent_id, "scenario.id": scenario or "", "task.id": task_id},
         ) as span:
             trace_id = format(span.get_span_context().trace_id, "032x")
-            result = await self._run(messages, headers, steps, task_id, trace_id, scenario, local_tools)
+            if obo_token:
+                me = obo.summary(self.cfg.agent_id, obo_token)
+                span.set_attribute("agent.acting_for", me["user"] or "")
+            result = await self._run(messages, headers, steps, task_id, trace_id, scenario, local_tools, obo_token)
+            # The executor's identity comes back from the hand-off as events; move it across
+            nested = [e for e in result.events if e.get("type") == "identity"]
+            result.events = [e for e in result.events if e.get("type") != "identity"]
+            result.identity = ([me] if obo_token else []) + [{k: v for k, v in e.items() if k != "type"} for e in nested]
             span.set_attribute("agent.status", result.status)
             TASKS.labels(self.cfg.agent_id, result.status).inc()
             log.info("task finished", extra={"task_id": task_id, "status": result.status, "scenario": scenario,
                                              "events": len(result.events)})
             return result
 
-    async def _run(self, messages, headers, steps, task_id, trace_id, scenario, local_tools=True) -> Result:
+    async def _run(self, messages, headers, steps, task_id, trace_id, scenario, local_tools=True, obo_token=None) -> Result:
         events: list[dict] = []
         convo = [{"role": "system", "content": self._system()}, *messages]
         llm = openai.AsyncOpenAI(
@@ -116,7 +128,8 @@ class Agent:
             return Result(status, reply, trace_id, task_id, events)
 
         try:
-            async with GatewayMcp(self.cfg.gateway, self.cfg.api_key, self.cfg.servers, headers) as mcp:
+            mcp_headers = {**headers, "X-Obo-Token": obo_token} if obo_token else headers
+            async with GatewayMcp(self.cfg.gateway, self.cfg.api_key, self.cfg.servers, mcp_headers) as mcp:
                 tools = await mcp.openai_tools() + ([d for d, _ in self.local_tools.values()] if local_tools else [])
                 for _ in range(steps):
                     msg = await self._chat(llm, convo, tools, events)

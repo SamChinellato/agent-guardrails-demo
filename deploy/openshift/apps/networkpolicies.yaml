@@ -188,11 +188,12 @@ kind: NetworkPolicy
 metadata: {name: verify-egress, namespace: aigw-ai}
 spec:
   # The second exception to "no internet" (NFR-08, D-072): the console signs users in with
-  # IBM Verify, a SaaS tenant (<tenant>.verify.ibm.com), over HTTPS. As with gguf-fetch, a
-  # NetworkPolicy can't name a host, so this is any public address on 443; cluster and node
-  # networks stay excluded. Phase 4 adds the agents (token exchange) and the guard (JWKS).
+  # IBM Verify, a SaaS tenant (<tenant>.verify.ibm.com), over HTTPS; the agents exchange
+  # tokens there and the guard fetches its signing keys. As with gguf-fetch, a NetworkPolicy
+  # can't name a host, so this is any public address on 443; cluster and node networks stay
+  # excluded.
   podSelector:
-    matchExpressions: [{key: app, operator: In, values: [console]}]
+    matchExpressions: [{key: app, operator: In, values: [console, researcher, executor, guard]}]
   policyTypes: [Egress]
   egress:
     - to: [{ipBlock: {cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10]}}]

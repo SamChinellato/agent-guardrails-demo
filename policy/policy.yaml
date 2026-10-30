@@ -8,6 +8,7 @@ checks:
   mcp.tool_allowlist:          { mode: enforce, severity: critical }
   mcp.argument_rules:          { mode: enforce, severity: critical }
   agent.user_prompt_injection: { mode: enforce, threshold: 0.90, severity: high }   # DEMO-02
+  mcp.user_entitlement:        { mode: enforce, severity: high }   # D-072: only for signed-in users
 agents:
   researcher:
     tools: [docs.list_documents, docs.read_document]
@@ -18,5 +19,11 @@ agents:
       actions.update_record: { fields_allow: [status, notes] }
   probe:
     tools: []            # the killswitch probe only needs to reach the routes (KS-04)
+# What an agent may do on a signed-in person's behalf, by their IBM Verify group (D-072).
+# Checked only when the call carries the agent's OBO token; anonymous calls skip it.
+users:
+  groups:
+    analyst-readonly: [docs.list_documents, docs.read_document]
+    analyst-actions:  [docs.list_documents, docs.read_document, actions.update_record, actions.send_email]
 deny_tools_all: [actions.export_customer_data]
 auto_trip: { on_severity: critical, scope: agent, dedupe_seconds: 60 }

@@ -2,7 +2,8 @@
 
   initialize, notifications, ping, ...  passed through unchanged
   tools/list   result filtered to the agent's allowlist (GRD-03)
-  tools/call   allowlist and argument rules before forwarding (GRD-03/04);
+  tools/call   allowlist and argument rules before forwarding (GRD-03/04), then what the
+               person the agent acts for may do (X-Obo-Token, D-072);
                on block -> JSON-RPC error -32001 with decision_id
                tool result scanned for injection (mcp.tool_result_injection);
                on block -> result replaced by isError + "Content quarantined ..."
@@ -17,6 +18,7 @@ from fastapi import Request, Response
 from fastapi.concurrency import run_in_threadpool
 
 from demo_common import get_logger
+from guard import obo
 from guard.engine import Engine, Subject
 
 log = get_logger("guard.mcp")
@@ -55,13 +57,16 @@ class McpProxy:
         agent = request.headers.get("x-agent-id", "")
         method, msg_id, params = msg.get("method"), msg.get("id"), msg.get("params") or {}
         route = f"mcp-{server}"
+        who = await self._who(request, agent) if method == "tools/call" else {}
 
         if method == "tools/call":
             tool = f"{server}.{params.get('name', '')}"
             args = params.get("arguments") or {}
-            for check in ("mcp.tool_allowlist", "mcp.argument_rules"):
+            # The agent's own policy first, so a critical breach still trips the circuit breaker
+            # whoever it acts for; then what the person may do
+            for check in ("mcp.tool_allowlist", "mcp.argument_rules", "mcp.user_entitlement"):
                 d = await run_in_threadpool(
-                    self.engine.evaluate, Subject(check, agent, route, tool=tool, arguments=args)
+                    self.engine.evaluate, Subject(check, agent, route, tool=tool, arguments=args, **who)
                 )
                 if d and d.verdict == "block":
                     return rpc_error(msg_id, BLOCKED, f"Blocked by policy: {d.reason}",
@@ -77,8 +82,21 @@ class McpProxy:
         if method == "tools/list":
             body["result"]["tools"] = self._visible_tools(server, agent, body["result"].get("tools", []))
         elif method == "tools/call":
-            body["result"] = await self._scan_result(server, agent, route, params.get("name", ""), body["result"])
+            body["result"] = await self._scan_result(server, agent, route, params.get("name", ""), body["result"], who)
         return Response(json.dumps(body), status_code=status, headers=headers)
+
+    @staticmethod
+    async def _who(request: Request, agent: str) -> dict:
+        """Who the agent is acting for, from its OBO token: Subject fields, empty if anonymous."""
+        token = request.headers.get("x-obo-token", "")
+        if not token:
+            return {}
+        claims, error = await run_in_threadpool(obo.verify, token, agent)
+        if error:
+            log.warning("OBO token rejected", extra={"agent": agent, "error": error})
+            return {"user_error": error}
+        user, groups = obo.user_of(claims)
+        return {"user": user, "groups": groups}
 
     async def _forward(self, server: str, raw: bytes, request: Request):
         headers = {h: request.headers[h] for h in FORWARD_HEADERS if h in request.headers}
@@ -105,7 +123,7 @@ class McpProxy:
         allowed = policy.agent(agent).tools - policy.deny_tools_all
         return [t for t in tools if f"{server}.{t.get('name')}" in allowed]
 
-    async def _scan_result(self, server: str, agent: str, route: str, name: str, result: dict) -> dict:
+    async def _scan_result(self, server: str, agent: str, route: str, name: str, result: dict, who: dict) -> dict:
         parts = [c.get("text", "") for c in result.get("content", []) if c.get("type") == "text"]
         text = "\n\n".join(parts)
         if not text:
@@ -114,7 +132,8 @@ class McpProxy:
         self.engine.external.add(text, "\n".join(parts), *parts)
         d = await run_in_threadpool(
             self.engine.evaluate,
-            Subject("mcp.tool_result_injection", agent, route, content=text, tool=f"{server}.{name}"),
+            Subject("mcp.tool_result_injection", agent, route, content=text, tool=f"{server}.{name}",
+                    user=who.get("user"), groups=who.get("groups", [])),
         )
         if d and d.verdict == "block":
             notice = f"Content quarantined by policy (decision {d.decision_id})"

@@ -23,6 +23,14 @@ spec:
             - {name: KILLSWITCH_URL, value: "http://killswitch.aigw-gateway.svc.cluster.local:8000"}
             - {name: MCP_DOCS_URL, value: "http://mcp-docs.aigw-ai.svc.cluster.local:8000/mcp"}
             - {name: MCP_ACTIONS_URL, value: "http://mcp-actions.aigw-ai.svc.cluster.local:8000/mcp"}
+            # Checks the agents' on-behalf-of tokens (D-072): Verify's keys, and each agent's
+            # client ID as its tokens' audience. Optional, from verify-oidc: unset, calls are anonymous.
+            - name: VERIFY_TENANT
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: tenant, optional: true}}
+            - name: VERIFY_AUDIENCE_RESEARCHER
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: researcher_client_id, optional: true}}
+            - name: VERIFY_AUDIENCE_EXECUTOR
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: executor_client_id, optional: true}}
         - name: policy-sync
           # K8S_SIDECAR_IMAGE@K8S_SIDECAR_DIGEST (REP-02, make openshift-check)
           image: quay.io/kiwigrid/k8s-sidecar:2.11.2@sha256:2912be006f62f9ea080194cf6d3afcd90daead8d101d0ba686a137a849f6a4f6
@@ -98,6 +106,14 @@ spec:
             - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
             - {name: LLM_MODEL, value: "demo"}     # cosmetic: the gateway's llm upstream sets the model (D-060)
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+            # Exchanges the signed-in person's token for its own (D-072), with its own Verify
+            # app. Optional, from verify-oidc: unset, the agent acts as itself.
+            - name: VERIFY_TENANT
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: tenant, optional: true}}
+            - name: VERIFY_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: researcher_client_id, optional: true}}
+            - name: VERIFY_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: researcher_client_secret, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -117,6 +133,14 @@ spec:
             - {name: GATEWAY_URL, value: "http://apisix-gateway.aigw-gateway.svc.cluster.local"}
             - {name: LLM_MODEL, value: "demo"}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+            # Exchanges the signed-in person's token for its own (D-072), with its own Verify
+            # app. Optional, from verify-oidc: unset, the agent acts as itself.
+            - name: VERIFY_TENANT
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: tenant, optional: true}}
+            - name: VERIFY_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: executor_client_id, optional: true}}
+            - name: VERIFY_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: executor_client_secret, optional: true}}
 ---
 apiVersion: apps/v1
 kind: Deployment

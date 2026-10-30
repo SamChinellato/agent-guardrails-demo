@@ -10,6 +10,7 @@ use that prefix.
 """
 
 import base64
+import contextvars
 import hashlib
 import os
 import secrets
@@ -40,12 +41,14 @@ SESSION_TTL = 8 * 3600         # the demo day; the token's own expiry ends it so
 @dataclass
 class Session:
     claims: dict                       # from the verified ID token
-    access_token: str                  # the user's token, for the agents' exchanges (phase 4)
+    access_token: str                  # the user's token, sent to the researcher to exchange
     id_token: str
     expires: float
-    obo: dict = field(default_factory=dict)   # agent -> OBO token claims, for the panel (phase 3)
+    obo: dict = field(default_factory=dict)   # agent -> its OBO token's claims, as it reported them
 
 
+# This request's signed-in session, so story prompts (scenarios.py) send the same token
+current: contextvars.ContextVar["Session | None"] = contextvars.ContextVar("session", default=None)
 _pending: dict[str, tuple[str, str, float]] = {}   # state -> (PKCE verifier, nonce, deadline)
 _sessions: dict[str, Session] = {}
 _oidc: dict = {}
@@ -73,6 +76,21 @@ def session(request: Request) -> Session | None:
     if s and s.expires > time.time():
         return s
     return None
+
+
+def agent_headers() -> dict[str, str]:
+    """For a call to an agent: the signed-in person's token, which the agent exchanges for its
+    own on-behalf-of token (D-072). Empty when nobody is signed in."""
+    s = current.get()
+    return {"X-Subject-Token": s.access_token} if s else {}
+
+
+def remember(result: dict) -> None:
+    """Keep the OBO token claims an agent reported, for /api/me (never the tokens)."""
+    if (s := current.get()) is not None:
+        for i in result.get("identity") or []:
+            if i.get("agent"):
+                s.obo[i["agent"]] = i
 
 
 def user(request: Request) -> dict | None:
@@ -172,8 +190,8 @@ def me(request: Request) -> JSONResponse:
     if (s := session(request)) is None:
         return JSONResponse({"mode": MODE, "user": None}, 401)
     return JSONResponse({"mode": MODE, "user": user(request),
-                         "tokens": {"id_token": s.claims, "access_token": _claims(s.access_token),
-                                    **{f"obo:{a}": c for a, c in s.obo.items()}}})
+                         "tokens": {"id_token": s.claims, "access_token": _claims(s.access_token)},
+                         "acting_for_you": s.obo})
 
 
 def _claims(token: str) -> dict | None:
