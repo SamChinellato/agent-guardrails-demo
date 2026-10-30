@@ -1,7 +1,8 @@
 """HTTP entry points for the two agents (7.7). Same package, two Deployments.
 
   POST /task {instruction, scenario_id, max_steps?}   one instruction (spec)
-  POST /chat {messages, scenario_id?, max_steps?}     a conversation, for the console (DEMO-01)
+  POST /chat {messages, scenario_id?, max_steps?, handoff?}   a conversation, for the console
+                                                      (DEMO-01); handoff lets it use the executor
 
 The researcher has one local tool, handoff_to_executor, which calls the executor through
 the gateway as consumer "researcher" (F4). Both return {status, reply, trace_id, events,
@@ -129,13 +130,14 @@ def build_app(agent_id: str):
                     if m.get("role") in ("user", "assistant") and m.get("content")]
         if not messages or messages[-1]["role"] != "user":
             return JSONResponse({"error": "messages must end with a user message"}, 400)
-        # Chat answers questions; hand-offs belong to tasks (the console's chat stays on topic)
+        # Chat answers questions; hand-offs belong to tasks, unless the caller allows them: the
+        # console does for a signed-in person, so the executor can act for them live (D-072)
         try:
             token = await acting_for(request)
         except (obo.ExchangeRefused, httpx.HTTPError) as e:
             return refused(e)
-        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"), local_tools=False,
-                                 obo_token=token)
+        result = await agent.run(messages, body.get("scenario_id") or "", body.get("max_steps"),
+                                 local_tools=bool(body.get("handoff")), obo_token=token)
         return JSONResponse(result.as_dict())
 
     return app

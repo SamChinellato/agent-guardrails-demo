@@ -197,28 +197,30 @@ class Agent:
             nested: list[dict] = []
             if name in self.local_tools:
                 outcome, text, nested = await self.local_tools[name][1](args, scenario)
-                decision = None
+                decision = check = None
             else:
                 try:
                     r = await mcp.call(name, args)
                 except KillSwitchEngaged:
                     span.set_attribute("mcp.decision", "halted")
                     raise
-                outcome, text, decision = r.outcome, r.text, r.decision_id
+                outcome, text, decision, check = r.outcome, r.text, r.decision_id, r.check
             span.set_attribute("mcp.decision", outcome)
             if decision:
                 span.set_attribute("guard.decision_id", decision)
         TOOL_CALLS.labels(self.cfg.agent_id, name, outcome).inc()
         events.append({"type": "tool", "agent": self.cfg.agent_id, "tool": name, "outcome": outcome,
-                       **({"decision_id": decision} if decision else {})})
+                       **({"decision_id": decision} if decision else {}), **({"check": check} if check else {})})
         events.extend(nested)
         if outcome == "denied":
-            return "Not done: " + plain_denial(text)
+            return "Not done: " + plain_denial(text, check)
         return text
 
 
-def plain_denial(message: str) -> str:
+def plain_denial(message: str, check: str | None = None) -> str:
     """The gateway's denial in a plain sentence for the model."""
+    if check == "mcp.user_entitlement":   # D-072
+        return "the person you are working for is not allowed to do that, so you can't do it for them."
     m = message.lower()
     if "recipient domain" in m:
         return "emails can only go to demo.local addresses."

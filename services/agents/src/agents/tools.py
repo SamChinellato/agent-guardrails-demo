@@ -28,6 +28,7 @@ class ToolResult:
     outcome: str  # ok | denied | quarantined | error
     text: str
     decision_id: str | None = None
+    check: str | None = None  # which guard check denied it, e.g. mcp.user_entitlement (D-072)
 
 
 def _is_kill(e: BaseException) -> bool:
@@ -120,7 +121,7 @@ class GatewayMcp:
             for m in _mcp_errors(e):
                 data = m.error.data if isinstance(m.error.data, dict) else {}
                 if m.error.code == -32001:
-                    return ToolResult("denied", m.error.message, data.get("decision_id"))
+                    return ToolResult("denied", m.error.message, data.get("decision_id"), data.get("check"))
                 return ToolResult("error", m.error.message)
             return ToolResult("error", f"{type(e).__name__}: {e}")
         text = "\n".join(getattr(c, "text", "") for c in r.content) or json.dumps(r.structured_content or {})

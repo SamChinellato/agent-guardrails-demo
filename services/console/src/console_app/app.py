@@ -133,6 +133,8 @@ async def chat(request: Request) -> JSONResponse:
     payload = {"messages": body.get("messages") or [], "scenario_id": ROGUE_SCENARIO if rogue else "chat"}
     if rogue:
         payload["max_steps"] = ROGUE_MAX_STEPS
+    elif identity.current.get() is not None:
+        payload["handoff"] = True   # a signed-in person's researcher may hand work to the executor (D-072)
     try:
         async with httpx.AsyncClient(timeout=600) as client:
             r = await client.post(f"{GATEWAY}/agents/researcher/chat", json=payload,

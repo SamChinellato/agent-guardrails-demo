@@ -51,6 +51,7 @@ A call with no token is anonymous and skips `mcp.user_entitlement`, as on k3d or
   - As claire, both are refused (`mcp.user_entitlement`, "claire may not …").
   - As dave, both go through.
   - Press **New chat** between runs.
+- **On the real model:** for a signed-in person, live chat (Granite) may hand work to the executor (the console sends `handoff`), so the identity check also happens unscripted. Try *Hand this to the executor: email logistics@demo.local that Northwind's late shipments in week 32 are resolved.* As claire the console shows **Insufficient permissions**; as dave the email is sent. Granite's wording, and whether it hands off at all, vary.
 - **Decision details:** every guard decision names the person the agent acted for.
 
 ## What the smoke test found

@@ -305,8 +305,12 @@ function withheldNotice(events) {
 function deniedNotice(events) {
   const denied = (events || []).filter(e => e.outcome === "denied");
   if (!denied.length) return null;
-  const what = [...new Set(denied.map(e => TOOL_ATTEMPT[e.tool] || e.tool))].join(", ");
-  return notice("Action blocked by the gateway", `An agent tried to ${what}, which Acme policy doesn't allow.`);
+  const words = list => [...new Set(list.map(e => TOOL_ATTEMPT[e.tool] || e.tool))].join(", ");
+  // D-072: refused because of who the agent acts for, not because of the agent's own policy
+  const forYou = denied.filter(e => e.check === "mcp.user_entitlement"), policy = denied.filter(e => e.check !== "mcp.user_entitlement");
+  if (forYou.length && !policy.length)
+    return notice("Insufficient permissions", `The ${forYou[0].agent || "agent"} tried to ${words(forYou)} on your behalf, but your account isn't allowed to, so it can't either.`);
+  return notice("Action blocked by the gateway", `An agent tried to ${words(denied)}, which Acme policy doesn't allow.`);
 }
 
 function metaLine(ex, extra) {
