@@ -185,9 +185,5 @@ def _claims(token: str) -> dict | None:
 
 
 def _problem(text: str) -> Response:
-    from fastapi.responses import HTMLResponse
-    from html import escape
-
-    return HTMLResponse(f'<!doctype html><meta charset="utf-8"><title>Sign-in</title>'
-                        f'<p style="font-family:sans-serif">{escape(text)} '
-                        f'<a href="{PREFIX}auth/login">Sign in</a></p>', 400)
+    """Back to the sign-in page, which says what went wrong."""
+    return RedirectResponse(PREFIX + "signin?" + urlencode({"error": text}), 303)

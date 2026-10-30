@@ -40,6 +40,23 @@
   .persona a { color: var(--muted); }
   .spacer { flex: 1; }
   .hbtn { background: transparent; color: var(--ink); border: 1px solid var(--rule); border-radius: 10px; padding: 7px 14px; font-size: 0.92rem; }
+  /* User menu (D-072): who is signed in, and sign-out */
+  .usermenu { position: relative; }
+  .usermenu[hidden] { display: none; }
+  .userbtn { display: flex; align-items: center; gap: 8px; background: transparent; color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 999px; padding: 4px 10px 4px 4px; font-size: 0.92rem; }
+  .userbtn[aria-expanded="true"] { border-color: var(--lane); }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--lane); color: #fff;
+    display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; }
+  .caret { width: 14px; height: 14px; color: var(--muted); }
+  .userlist { position: absolute; right: 0; top: calc(100% + 6px); min-width: 230px; z-index: 10;
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(28, 36, 51, 0.12); padding: 6px; }
+  .userlist[hidden] { display: none; }
+  .ucard { display: flex; flex-direction: column; padding: 8px 10px 10px; border-bottom: 1px solid var(--rule); margin-bottom: 6px; }
+  .ucard span { color: var(--muted); font-size: 0.88rem; }
+  .userlist a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; }
+  .userlist a:hover, .userlist a:focus-visible { background: var(--fog); }
   .hbtn[aria-pressed="true"] { background: var(--lane); border-color: var(--lane); color: #fff; }
 
   .shell { flex: 1; display: flex; min-height: 0; }
@@ -112,6 +129,9 @@
   @media (max-width: 860px) {
     .monitor { position: fixed; inset: 64px 0 0 auto; width: min(380px, 100vw); box-shadow: -8px 0 24px rgba(0,0,0,0.12); z-index: 5; }
     .persona { display: none; }
+    .uname, .caret { display: none; }
+    .userbtn { padding: 3px; }
+    .hbtn { white-space: nowrap; }
   }
   @media (prefers-reduced-motion: reduce) { .typing i { animation: none; } }
 </style>
@@ -120,11 +140,25 @@
 <header>
   <div>
     <h1>Supplier assistant</h1>
-    <p class="persona">Acme procurement. You're signed in as a procurement analyst. <a href="architecture.png" target="_blank" rel="noopener">How it works</a></p>
+    <p class="persona">Acme procurement. <span id="who">You're signed in as a procurement analyst.</span> <a href="architecture.png" target="_blank" rel="noopener">How it works</a></p>
   </div>
   <span class="spacer"></span>
   <button class="hbtn" id="monitorBtn" type="button" aria-pressed="false" aria-controls="monitor">Monitoring</button>
   <button class="hbtn" id="newChat" type="button" title="Clear the chat, close every circuit breaker and restore the policy">New chat</button>
+  <div class="usermenu" id="userMenu" hidden>
+    <button class="userbtn" id="userBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="userList">
+      <span class="avatar" id="userAvatar" aria-hidden="true"></span>
+      <span class="uname" id="userName"></span>
+      <svg class="caret" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="userlist" id="userList" role="menu" hidden>
+      <div class="ucard">
+        <strong id="userFull"></strong>
+        <span id="userLogin"></span>
+      </div>
+      <a role="menuitem" href="auth/logout" id="signOut">Sign out</a>
+    </div>
+  </div>
 </header>
 
 <div class="shell">
@@ -171,6 +205,32 @@ const GRAFANA = "{{GRAFANA_SUBDOMAIN}}"   // OpenShift: a sibling Route host; k3
 let history = [];        // only messages that reached the assistant
 let selected = null;     // the exchange shown in Monitoring
 const flowCache = new Map();
+
+// IBM Verify sign-in (D-072): the user menu says who is signed in and offers sign-out.
+// Anonymous mode (k3d, AUTH_MODE=none) keeps the generic persona line and no menu.
+const userMenu = document.getElementById("userMenu");
+const userBtn = document.getElementById("userBtn");
+const userList = document.getElementById("userList");
+function setMenu(open) {
+  userList.hidden = !open;
+  userBtn.setAttribute("aria-expanded", String(open));
+  if (open) document.getElementById("signOut").focus();
+}
+userBtn.addEventListener("click", () => setMenu(userList.hidden));
+document.addEventListener("click", e => { if (!userMenu.contains(e.target)) setMenu(false); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !userList.hidden) { setMenu(false); userBtn.focus(); }
+});
+fetch("api/me").then(r => r.ok ? r.json() : null).then(me => {
+  if (!me || me.mode !== "verify" || !me.user) return;
+  const u = me.user, name = u.name || u.username;
+  document.getElementById("who").textContent = "";
+  document.getElementById("userAvatar").textContent = name.trim().charAt(0).toUpperCase();
+  document.getElementById("userName").textContent = name;
+  document.getElementById("userFull").textContent = name;
+  document.getElementById("userLogin").textContent = u.username;
+  userMenu.hidden = false;
+}).catch(() => {});
 
 const TOOL_ATTEMPT = {
   docs__list_documents: "list documents", docs__read_document: "read a document",

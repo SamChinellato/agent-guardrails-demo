@@ -17,7 +17,7 @@ researcher ──hand-off──▶ executor ──token exchange──▶ OBO to
 |---|---|---|
 | 0 | Verify tenant: users, groups, three apps (below) | done (`samcverify.verify.ibm.com`, 2026-10-30) |
 | 1 | Smoke test: `scripts/openshift/verify-obo-smoke.py` shows what the tokens carry | passed for claire and dave; findings below |
-| 2 | Console sign-in (`AUTH_MODE=verify`) | built and tested locally; not yet deployed |
+| 2 | Console sign-in (`AUTH_MODE=verify`) | live on syd05 (2026-10-30) |
 | 3 | Identity panel: the user's token and each agent's OBO token | after phase 1 |
 | 4 | Agents exchange and send OBO tokens; the guard checks them and decides on groups | after phase 1 |
 | 5 | NetworkPolicy egress to the tenant, Secret, decision trail shows the user | with 2 and 4 |
@@ -195,7 +195,7 @@ oc login <api-url>
 scripts/openshift/verify-secret.sh
 ```
 
-Open `<CONSOLE>/console/`. You sign in to OpenShift first, then to Verify, as claire or dave. Once that works, remove `http://localhost:8765/callback` from the `aigw-console` application (step 3.4).
+Open `<CONSOLE>/console/`. You sign in to OpenShift first, then the console shows its sign-in page: **Sign in with IBM Verify**, as claire or dave. Sign out is in the user menu at the top right. Once that works, remove `http://localhost:8765/callback` from the `aigw-console` application (step 3.4).
 
 ## Rollback
 

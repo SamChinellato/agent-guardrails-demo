@@ -35,12 +35,13 @@ ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "120"))
 PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 
 app = create_app("console")
-OPEN = ("/healthz", "/readyz", "/metrics", "/auth/")   # reachable without signing in
+OPEN = ("/healthz", "/readyz", "/metrics", "/auth/", "/signin")   # reachable without signing in
+SIGNIN = (Path(__file__).parent / "static" / "signin.html").read_text()
 
 
 @app.middleware("http")
 async def require_sign_in(request: Request, call_next):
-    """AUTH_MODE=verify: the page sends you to IBM Verify, the API answers 401 (D-072)."""
+    """AUTH_MODE=verify: pages send you to the sign-in page, the API answers 401 (D-072)."""
     path = request.url.path
     if not identity.enabled() or path.startswith(OPEN) or identity.session(request):
         return await call_next(request)
@@ -48,7 +49,17 @@ async def require_sign_in(request: Request, call_next):
         return JSONResponse({"error": "sign in first"}, 401)
     from fastapi.responses import RedirectResponse
 
-    return RedirectResponse(identity.PREFIX + "auth/login", 303)
+    return RedirectResponse(identity.PREFIX + "signin", 303)
+
+
+@app.get("/signin", include_in_schema=False)
+async def signin(request: Request):
+    """The sign-in page: one button to IBM Verify, and the reason if the last try failed."""
+    if identity.enabled() and identity.session(request):
+        from fastapi.responses import RedirectResponse
+
+        return RedirectResponse(identity.PREFIX, 303)
+    return HTMLResponse(SIGNIN)
 
 
 app.add_api_route("/auth/login", identity.login, methods=["GET"], include_in_schema=False)

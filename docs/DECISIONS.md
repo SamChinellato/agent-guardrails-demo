@@ -893,6 +893,8 @@ At the operator's request (2026-10-30), the demo gets real users, so it can show
 
 **The network.** Verify is a SaaS tenant, so this is the second exception to NFR-08, after `gguf-fetch`, and the operator accepted it. The NetworkPolicy `verify-egress` lets the console reach public addresses on 443, with cluster and node networks excluded; a NetworkPolicy can't name a host. OVN-Kubernetes' EgressFirewall can name one (`dnsName`), and is the way to narrow this to the tenant.
 
+**What a person sees.** A sign-in page in the console's own style, with a heading and one **Sign in with IBM Verify** button. A failed sign-in comes back to that page with the reason. Once signed in, a user menu on the right of the header shows the person's initial and name; it opens to their name, username and **Sign out**, which ends the Verify session too. Neither the page nor the menu shows the person's group or the demo accounts: the group shows only in what the agents may do. Without sign-in (k3d, `AUTH_MODE=none`) the header is unchanged.
+
 **Not yet decided.** The console's Route still passes through the OpenShift OAuth proxy, so a presenter signs in twice: first to OpenShift, then to Verify. Once Verify sign-in works, the Route can go straight to APISIX's `/console/` and Verify becomes the only gate.
 
 **Rolling back.** Run `MODE=none scripts/openshift/verify-secret.sh`, or delete the Secret and restart the console. Either way the console is anonymous again, as before.

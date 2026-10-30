@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Supplier assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700&display=swap">
+<style>
+  /* The console's own tokens (index.html), so sign-in looks like the same app (D-072) */
+  :root {
+    --fog: #eef1f4;
+    --paper: #ffffff;
+    --ink: #1c2433;
+    --muted: #6b7484;
+    --lane: #2f5aa8;
+    --lane-soft: #d6e0f2;
+    --stop: #c8322f;
+    --stop-soft: #f7e1e0;
+    --rule: #d8dde4;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: flex; flex-direction: column;
+    background: var(--fog); color: var(--ink);
+    font: 400 17px/1.5 "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, sans-serif;
+  }
+  a:focus-visible { outline: 3px solid var(--lane); outline-offset: 2px; }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px clamp(16px, 3vw, 32px); border-bottom: 1px solid var(--rule); background: var(--paper);
+  }
+  h1 { font-size: 1.15rem; font-weight: 700; margin: 0; }
+  .persona { color: var(--muted); font-size: 0.9rem; margin: 0; }
+  main { flex: 1; display: grid; place-items: center; padding: 24px 16px; }
+  .card {
+    width: min(440px, 100%); background: var(--paper); border: 1px solid var(--rule); border-radius: 16px;
+    padding: 32px clamp(20px, 5vw, 36px);
+  }
+  .card h2 { font-size: 1.6rem; margin: 0 0 22px; }
+  .signin {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: var(--lane); color: #fff; text-decoration: none; font-weight: 600;
+    border-radius: 12px; padding: 13px 20px;
+  }
+  .signin:hover { background: #274d91; }
+  .signin svg { width: 20px; height: 20px; flex: none; }
+  .error {
+    background: var(--stop-soft); border-left: 4px solid var(--stop); border-radius: 8px;
+    padding: 10px 14px; margin: 0 0 20px; font-size: 0.95rem;
+  }
+  .error[hidden] { display: none; }
+  .error strong { display: block; color: var(--stop); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Supplier assistant</h1>
+    <p class="persona">Acme procurement</p>
+  </div>
+</header>
+
+<main>
+  <section class="card" aria-labelledby="title">
+    <h2 id="title">Sign in</h2>
+
+    <div class="error" id="error" role="alert" hidden>
+      <strong>Sign-in didn't complete</strong>
+      <span id="errorText"></span>
+    </div>
+
+    <a class="signin" href="auth/login">
+      <svg viewBox="0 0 32 32" aria-hidden="true" fill="currentColor"><path d="M16 2 4 7v8.2C4 22.9 9.1 29.6 16 31c6.9-1.4 12-8.1 12-15.8V7Zm10 13.2c0 6.5-4.2 12.3-10 13.7-5.8-1.4-10-7.2-10-13.7V8.3l10-4.2 10 4.2Z"/><path d="m14 18.6-3.3-3.3-1.4 1.4 4.7 4.7 8.7-8.7-1.4-1.4Z"/></svg>
+      Sign in with IBM Verify
+    </a>
+
+  </section>
+</main>
+
+<script>
+  const err = new URLSearchParams(location.search).get("error");
+  if (err) {
+    document.getElementById("errorText").textContent = err;
+    document.getElementById("error").hidden = false;
+  }
+</script>
+</body>
+</html>
