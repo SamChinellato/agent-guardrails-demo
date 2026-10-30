@@ -185,6 +185,21 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
+metadata: {name: verify-egress, namespace: aigw-ai}
+spec:
+  # The second exception to "no internet" (NFR-08, D-072): the console signs users in with
+  # IBM Verify, a SaaS tenant (<tenant>.verify.ibm.com), over HTTPS. As with gguf-fetch, a
+  # NetworkPolicy can't name a host, so this is any public address on 443; cluster and node
+  # networks stay excluded. Phase 4 adds the agents (token exchange) and the guard (JWKS).
+  podSelector:
+    matchExpressions: [{key: app, operator: In, values: [console]}]
+  policyTypes: [Egress]
+  egress:
+    - to: [{ipBlock: {cidr: 0.0.0.0/0, except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10]}}]
+      ports: [{port: 443, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata: {name: mcp-servers, namespace: aigw-ai}
 spec:
   # MCP servers are reached only through the guard's inspecting proxy (F3)

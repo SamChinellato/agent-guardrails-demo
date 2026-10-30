@@ -10,3 +10,6 @@ __pycache__/
 .kube/
 .env.local
 .claude/settings.local.json
+
+# A separate reference project with its own git history and live secrets; never commit it here
+confused-deputy/

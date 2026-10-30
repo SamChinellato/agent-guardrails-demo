@@ -171,12 +171,14 @@ version = "0.1.0"
 source = { editable = "console" }
 dependencies = [
     { name = "demo-common" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "demo-common", editable = "common" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
 ]
 

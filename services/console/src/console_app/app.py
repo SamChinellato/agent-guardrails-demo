@@ -4,6 +4,10 @@ browser never sees a secret. Every message goes through the gateway to the resea
 
   GET  /             the page
   POST /api/chat     {messages, rogue?} -> {kind: reply|blocked|halted|error, ...}
+  GET  /api/me       who is signed in, and their tokens' claims (AUTH_MODE=verify, D-072)
+
+With AUTH_MODE=verify (OpenShift) every page and API needs an IBM Verify sign-in first
+(identity.py, docs/IDENTITY.md); the default, none, is the anonymous console as before.
 """
 
 import os
@@ -14,7 +18,7 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from console_app import flow as flows
-from console_app import scenarios
+from console_app import identity, scenarios
 from demo_common import create_app, get_logger, run
 
 log = get_logger("console")
@@ -31,6 +35,26 @@ ROGUE_MAX_STEPS = int(os.environ.get("ROGUE_MAX_STEPS", "120"))
 PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 
 app = create_app("console")
+OPEN = ("/healthz", "/readyz", "/metrics", "/auth/")   # reachable without signing in
+
+
+@app.middleware("http")
+async def require_sign_in(request: Request, call_next):
+    """AUTH_MODE=verify: the page sends you to IBM Verify, the API answers 401 (D-072)."""
+    path = request.url.path
+    if not identity.enabled() or path.startswith(OPEN) or identity.session(request):
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"error": "sign in first"}, 401)
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(identity.PREFIX + "auth/login", 303)
+
+
+app.add_api_route("/auth/login", identity.login, methods=["GET"], include_in_schema=False)
+app.add_api_route("/auth/callback", identity.callback, methods=["GET"], include_in_schema=False)
+app.add_api_route("/auth/logout", identity.logout, methods=["GET"], include_in_schema=False)
+app.add_api_route("/api/me", identity.me, methods=["GET"], include_in_schema=False)
 
 
 @app.get("/architecture.png", include_in_schema=False)

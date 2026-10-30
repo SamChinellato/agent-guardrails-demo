@@ -146,3 +146,16 @@ spec:
             - {name: TEMPO_TOKEN_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/token}
             - {name: TEMPO_CA_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
+            # IBM Verify sign-in (D-072, docs/IDENTITY.md). The Secret is made from
+            # .secrets/verify.env by scripts/openshift/verify-secret.sh, never by Argo (OS-09);
+            # until it exists AUTH_MODE is unset and the console stays anonymous.
+            - name: AUTH_MODE
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: auth_mode, optional: true}}
+            - name: VERIFY_TENANT
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: tenant, optional: true}}
+            - name: VERIFY_CLIENT_ID
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: console_client_id, optional: true}}
+            - name: VERIFY_CLIENT_SECRET
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: console_client_secret, optional: true}}
+            - name: VERIFY_REDIRECT_URI
+              valueFrom: {secretKeyRef: {name: verify-oidc, key: redirect_uri, optional: true}}

@@ -3,7 +3,7 @@ name = "console"
 version = "0.1.0"
 description = "Presenter chat console (DEMO-01): talks to the researcher through the gateway as demo-user"
 requires-python = "==3.12.*"
-dependencies = ["demo-common", "pyyaml>=6.0,<7"]
+dependencies = ["demo-common", "pyyaml>=6.0,<7", "pyjwt[crypto]>=2.10,<3"]
 
 [project.scripts]
 console = "console_app.app:main"

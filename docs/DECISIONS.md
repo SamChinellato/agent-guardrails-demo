@@ -873,3 +873,26 @@ At the operator's request (2026-10-27), nothing the demo shows in Grafana names 
 **Moved with the names:** the dashboards (`build.py`, regenerated), the alert rules, the console's request-flow view (`flow.py`), the evidence collector (`collect.py`), the acceptance tests, and the metric names in OBSERVABILITY.md and DETECTION.md. Older decisions keep the old names, as written at the time. On k3d the chart's own ServiceMonitor has no relabelings, so its scrape labels still say `apisix`.
 
 **Rolling back.** The change is two commits (the rename, then the hostname rewrite), and the tag `pre-gateway-rename` marks the deployed state before it. To undo: `git revert` both D-071 commits, push, `TARGET=openshift scripts/openshift/build-images.sh` (the gateway bootstrap job re-applies the plugin configs and metadata), then refresh Argo CD. Telemetry already recorded keeps the names it was written with: after the change, earlier metrics stay under `apisix_*` and earlier traces under `apisix`, and after a rollback the same is true the other way round.
+
+## D-072: Users sign in with IBM Verify, and agents act on their behalf (OpenShift only)
+
+At the operator's request (2026-10-30), the demo gets real users, so it can show the confused-deputy problem being closed: an agent must never do more than the person it is working for. The user guide and the Verify setup are in [IDENTITY.md](IDENTITY.md). The shape is taken from the `confused-deputy` reference project (IBM Verify, watsonx Orchestrate and Vault), with three changes:
+
+- **Tokens stay on the server.** In confused-deputy the browser keeps them in `localStorage`. Here, the console's backend holds them and the browser gets only an opaque, HttpOnly session cookie, scoped to `/console/`.
+- **Tokens are verified, not just decoded.** confused-deputy's backend decodes the user's token without checking its signature. The console checks the ID token's signature (Verify's JWKS), issuer, audience and nonce. Phase 4 has the guard check every OBO token in the same way.
+- **The console uses PKCE.** confused-deputy turns it off.
+
+**Who does what.**
+
+- The console signs the user in: authorization code with PKCE, through the `aigw-console` Verify app.
+- Each agent has its own Verify app (`aigw-researcher`, `aigw-executor`). Each exchanges the user's token for an on-behalf-of token (RFC 8693) whose audience is that agent.
+- The guard alone verifies those tokens and decides on the user's groups, as the operator chose (the guard only, for now; not APISIX's `openid-connect` plugin). The consumer keys stay, so the gateway still knows which agent is calling, and the token adds for whom.
+- The users are Claire (`claire`, group `analyst-readonly`) and Dave (`dave`, group `analyst-actions`); the tenant's Alice and Bob belong to another demo.
+
+**OpenShift only.** On k3d the console keeps its anonymous `demo-user`. On OpenShift everything hangs off the `verify-oidc` Secret, which `scripts/openshift/verify-secret.sh` makes from `.secrets/verify.env`; Argo CD never manages it (OS-09). The console reads each key as optional, so until the Secret exists, `AUTH_MODE` is unset and nothing changes.
+
+**The network.** Verify is a SaaS tenant, so this is the second exception to NFR-08, after `gguf-fetch`, and the operator accepted it. The NetworkPolicy `verify-egress` lets the console reach public addresses on 443, with cluster and node networks excluded; a NetworkPolicy can't name a host. OVN-Kubernetes' EgressFirewall can name one (`dnsName`), and is the way to narrow this to the tenant.
+
+**Not yet decided.** The console's Route still passes through the OpenShift OAuth proxy, so a presenter signs in twice: first to OpenShift, then to Verify. Once Verify sign-in works, the Route can go straight to APISIX's `/console/` and Verify becomes the only gate.
+
+**Rolling back.** Run `MODE=none scripts/openshift/verify-secret.sh`, or delete the Secret and restart the console. Either way the console is anonymous again, as before.
