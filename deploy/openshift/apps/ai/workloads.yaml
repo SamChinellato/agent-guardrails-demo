@@ -171,8 +171,10 @@ spec:
             - {name: TEMPO_CA_FILE, value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector.aigw-observability.svc.cluster.local:4318"}
             # IBM Verify sign-in (D-072, docs/IDENTITY.md). The Secret is made from
-            # .secrets/verify.env by scripts/openshift/verify-secret.sh, never by Argo (OS-09);
-            # until it exists AUTH_MODE is unset and the console stays anonymous.
+            # .secrets/verify.env by scripts/openshift/verify-secret.sh, never by Argo (OS-09).
+            # Verify is the console's only gate here (no OAuth proxy), so until the Secret
+            # exists the console answers 503 rather than run anonymous and public.
+            - {name: REQUIRE_SIGN_IN, value: "true"}
             - name: AUTH_MODE
               valueFrom: {secretKeyRef: {name: verify-oidc, key: auth_mode, optional: true}}
             - name: VERIFY_TENANT

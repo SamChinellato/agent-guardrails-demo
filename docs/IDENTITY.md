@@ -226,8 +226,10 @@ oc login <api-url>
 scripts/openshift/verify-secret.sh
 ```
 
-Open `<CONSOLE>/console/`. You sign in to OpenShift first, then the console shows its sign-in page: **Sign in with IBM Verify**, as claire or dave. Sign out is in the user menu at the top right. Once that works, remove `http://localhost:8765/callback` from the `aigw-console` application (step 3.4).
+Open `<CONSOLE>/`. The console shows its sign-in page, **Sign in with IBM Verify**: sign in as claire or dave. There is no OpenShift login in front of the console; Verify is its only gate. Sign out is in the user menu at the top right. Once that works, remove `http://localhost:8765/callback` from the `aigw-console` application (step 3.4).
 
 ## Rollback
 
-Run `MODE=none scripts/openshift/verify-secret.sh`. The console is anonymous again, sends no tokens, and so every tool call skips `mcp.user_entitlement`. To remove the check outright, run `make policy-set CHECK=mcp.user_entitlement MODE=off`, or revert the D-072 commits.
+- **Turn off only the user check:** `make policy-set CHECK=mcp.user_entitlement MODE=off`. Users still sign in, and the agents still exchange tokens; the guard just stops deciding on groups.
+- **Go back to the OpenShift login:** revert the D-072 commit that removed the console's OAuth proxy, push, and refresh Argo CD. That restores the proxy in front of an anonymous console.
+- **There is no `MODE=none`.** With no proxy in front, an anonymous console would be public. On OpenShift the console sets `REQUIRE_SIGN_IN=true`, so without the `verify-oidc` Secret it answers 503.

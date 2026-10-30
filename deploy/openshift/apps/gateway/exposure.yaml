@@ -1,14 +1,17 @@
 # Exposure on OpenShift (OS-04): edge-TLS Routes. Hosts come from `subdomain` plus the
 # cluster's ingress domain, so nothing cluster-specific is in git.
 # - aigw-gateway.<domain>: the gateway API for the CLI and tests, consumer keys (key-auth)
-#   as today. Only the key-protected prefixes are routed; /console is not, so the console
-#   is reachable only through its OAuth proxy.
-# - aigw-console.<domain>: OAuth proxy -> APISIX (open https://aigw-console.<domain>/console)
+#   as today. Only the key-protected prefixes are routed.
+# - aigw-console.<domain>: straight to APISIX (open https://aigw-console.<domain>/). The
+#   console signs people in with IBM Verify itself and serves nothing else without it
+#   (REQUIRE_SIGN_IN, D-072); "/" redirects to /console/ (route console-landing). The rest of
+#   the host is the same key-protected API as aigw-gateway.
 # - aigw-killswitch.<domain>: OAuth proxy -> the kill-switch panel (then its operator token)
 # - aigw-apisix.<domain>/ui/: OAuth proxy -> APISIX's Admin API and its built-in UI (then the
 #   admin or viewer key, as with make admin-ui); a deviation from GW-07 rule 6 (D-057)
 # The proxies admit users who may `get` Services in aigw-gateway (cluster-admins, invited
-# presenters), not other tenants. Their cookie secret is created by gen-secrets.sh.
+# presenters), not other tenants. Their cookie secret is created by gen-secrets.sh. The
+# console had one too until D-072; IBM Verify replaced it.
 # --------------------------------------------------------------------------- gateway API
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -63,21 +66,6 @@ spec:
   tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
 # --------------------------------------------------------------------------- console
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: console-oauth
-  namespace: aigw-gateway
-  annotations:
-    serviceaccounts.openshift.io/oauth-redirectreference.console: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"console"}}'
----
-apiVersion: v1
-kind: Service
-metadata: {name: console-oauth, namespace: aigw-gateway, labels: {app: console-oauth}}
-spec:
-  selector: {app: console-oauth}
-  ports: [{name: http, port: 8080, targetPort: 8080}]
----
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -89,8 +77,8 @@ metadata:
   annotations: {haproxy.router.openshift.io/timeout: 10m}
 spec:
   subdomain: aigw-console
-  to: {kind: Service, name: console-oauth}
-  port: {targetPort: http}
+  to: {kind: Service, name: apisix-gateway}
+  port: {targetPort: apisix-gateway}
   tls: {termination: edge, insecureEdgeTerminationPolicy: Redirect}
 ---
 # Landing pages: a Route can't redirect, so each OAuth proxy whose app doesn't live at "/"
@@ -99,64 +87,8 @@ apiVersion: v1
 kind: ConfigMap
 metadata: {name: route-landing, namespace: aigw-gateway}
 data:
-  console.html: |
-    <!doctype html><meta http-equiv="refresh" content="0; url=/console/"><a href="/console/">Console</a>
   apisix.html: |
     <!doctype html><meta http-equiv="refresh" content="0; url=/ui/"><a href="/ui/">APISIX dashboard</a>
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: console-oauth
-  namespace: aigw-gateway
-  labels: {app: console-oauth}
-  annotations:
-    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"oauth-proxy:v4.4","namespace":"openshift"},"fieldPath":"spec.template.spec.containers[?(@.name==\"oauth-proxy\")].image"}]'
-spec:
-  replicas: 1
-  selector: {matchLabels: {app: console-oauth}}
-  template:
-    metadata: {labels: {app: console-oauth}}
-    spec:
-      serviceAccountName: console-oauth   # its token is the OAuth client secret
-      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
-      containers:
-        - name: oauth-proxy
-          # The cluster's own oauth-proxy (openshift/oauth-proxy:v4.4, versioned with the
-          # cluster release); the trigger swaps in its digest
-          image: image-registry.openshift-image-registry.svc:5000/openshift/oauth-proxy:v4.4
-          args:
-            - --provider=openshift
-            - --http-address=:8080
-            - --https-address=
-            # The console only (its page and API are under /console/); "/" is the landing page
-            - --upstream=http://apisix-gateway.aigw-gateway.svc.cluster.local:80/console/
-            - --upstream=file:///landing/#/
-            - --upstream-timeout=10m   # long story prompts; default 30s (see the Route)
-            - --openshift-service-account=console-oauth
-            - --cookie-secret-file=/etc/oauth/cookie-secret
-            - --cookie-secure=true
-            - --pass-basic-auth=false   # else the OpenShift user arrives as a failed Basic login upstream
-            - '--openshift-sar={"namespace":"aigw-gateway","resource":"services","verb":"get"}'
-          ports: [{name: http, containerPort: 8080}]
-          readinessProbe:
-            httpGet: {path: /oauth/healthz, port: http}
-            periodSeconds: 5
-          resources:
-            requests: {cpu: 10m, memory: 32Mi}
-            limits: {cpu: 200m, memory: 128Mi}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities: {drop: [ALL]}
-          volumeMounts:
-            - {name: cookie, mountPath: /etc/oauth, readOnly: true}
-            - {name: landing, mountPath: /landing, readOnly: true}
-      volumes:
-        - name: cookie
-          secret: {secretName: oauth-proxy-cookie}
-        - name: landing
-          configMap: {name: route-landing, items: [{key: console.html, path: index.html}]}
 # --------------------------------------------------------------------------- kill-switch panel
 ---
 apiVersion: v1

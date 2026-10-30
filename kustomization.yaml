@@ -125,6 +125,7 @@ configMapGenerator:
     files:
       - gateway/routes/agent-executor.json
       - gateway/routes/agent-researcher.json
+      - gateway/routes/console-landing.json
       - gateway/routes/console-root.json
       - gateway/routes/console.json
       - gateway/routes/demo-documents.json

@@ -15,7 +15,7 @@
 
 | Screen | k3d | OpenShift (`<domain>`: the cluster's apps domain) | Use |
 | --- | --- | --- | --- |
-| Console | `http://<host>:8080/console` | `https://aigw-console.<domain>` (OpenShift login) | The audience watches this |
+| Console | `http://<host>:8080/console` | `https://aigw-console.<domain>` (IBM Verify sign-in: claire or dave) | The audience watches this |
 | Architecture | `http://<host>:8080/console/architecture.png` | `https://aigw-console.<domain>/console/architecture.png` | Opening slide (also the **How it works** link in the console) |
 | Grafana | `http://<host>:3001` | `https://aigw-grafana.<domain>` (OpenShift login) | **Agent Behaviour** for beat 5; **Decision trail** opens from the console |
 | Kill switch | `http://<host>:8090` | `https://aigw-killswitch.<domain>` (OpenShift login) | Token: `cat .secrets/killswitch-operator-token` |

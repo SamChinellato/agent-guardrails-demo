@@ -119,7 +119,7 @@ The split is deliberate: **APISIX enforces, the guard judges.** The Lua plugin i
 - **APISIX sets `X-Agent-Id` from the matched consumer** and overwrites any value a client sends. The guard, metrics, alerts and kill switch all key on it.
 - **The guard trusts `X-Agent-Id` only because NetworkPolicy lets nothing but APISIX reach it.** The console, for example, is deliberately not allowed to call the guard directly.
 - **Metrics that drive alerts come from the gateway and the guard**, never from what an agent reports about itself (D-021, D-037). A compromised agent can't hide its token use.
-- **On OpenShift, people sign in with OpenShift OAuth** in front of every UI (an oauth-proxy per UI, admitting users who may `get` Services in `aigw-gateway`). The person's identity stops at that proxy: the console calls the gateway as `demo-user`.
+- **On OpenShift, people sign in to the console with IBM Verify**, and the agents act on their behalf with their own on-behalf-of tokens, which the guard checks (D-072, [IDENTITY.md](IDENTITY.md)). The operator UIs (the kill-switch panel, the APISIX Admin UI, Grafana, Prometheus) keep OpenShift OAuth in front (an oauth-proxy per UI, admitting users who may `get` Services in `aigw-gateway`).
 
 ## The kill switch
 
@@ -183,7 +183,7 @@ The same services, gateway config, policy, dashboards and alert rules run on bot
 | Images | Built locally, pushed to a k3d registry | Built in the cluster (BuildConfigs in `aigw-build`), rolled out by image triggers |
 | Live LLM | Ollama on the host | llama.cpp in `aigw-ai` |
 | Telemetry | kube-prometheus-stack, Tempo, Loki, OTel collector Helm charts | Cluster Observability Operator, Tempo Operator, Loki Operator, Red Hat build of OpenTelemetry, Grafana Operator |
-| Access | Host ports (8080 gateway and console, 3000 Grafana, 8090 kill switch, 9090, 9093, 8099) | HTTPS Routes behind OpenShift login; the gateway API Route uses API keys only |
+| Access | Host ports (8080 gateway and console, 3000 Grafana, 8090 kill switch, 9090, 9093, 8099) | HTTPS Routes: the console behind IBM Verify sign-in, the operator UIs behind OpenShift login, the gateway API with API keys only |
 | Gateway bootstrap | From the host through a port-forward | An Argo CD Sync hook Job running the same script |
 | Pod security | Fixed UIDs | `restricted-v2`, arbitrary UIDs |
 

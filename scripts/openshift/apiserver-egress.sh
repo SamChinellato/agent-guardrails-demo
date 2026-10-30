@@ -24,6 +24,6 @@ policy() { # policy NAMESPACE POD_SELECTOR_JSON
 EOF
 }
 policy aigw-ai '{"matchExpressions":[{"key":"app","operator":"In","values":["console","guard"]}]}' | oc apply -f - >/dev/null
-policy aigw-gateway '{"matchExpressions":[{"key":"app","operator":"In","values":["console-oauth","killswitch-oauth","apisix-oauth"]}]}' \
+policy aigw-gateway '{"matchExpressions":[{"key":"app","operator":"In","values":["killswitch-oauth","apisix-oauth"]}]}' \
   | oc apply -f - >/dev/null
 log "API server egress allowed to $ips:$port"

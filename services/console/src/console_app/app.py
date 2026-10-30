@@ -36,6 +36,9 @@ PAGE = (Path(__file__).parent / "static" / "index.html").read_text()
 
 app = create_app("console")
 OPEN = ("/healthz", "/readyz", "/metrics", "/auth/", "/signin")   # reachable without signing in
+# OpenShift: IBM Verify is the console's only gate (no OAuth proxy in front, D-072), so without
+# it the console serves nothing rather than an anonymous, public console
+REQUIRE_SIGN_IN = os.environ.get("REQUIRE_SIGN_IN", "") == "true"
 SIGNIN = (Path(__file__).parent / "static" / "signin.html").read_text()
 
 
@@ -43,6 +46,8 @@ SIGNIN = (Path(__file__).parent / "static" / "signin.html").read_text()
 async def require_sign_in(request: Request, call_next):
     """AUTH_MODE=verify: pages send you to the sign-in page, the API answers 401 (D-072)."""
     path = request.url.path
+    if REQUIRE_SIGN_IN and not identity.enabled() and not path.startswith(("/healthz", "/readyz", "/metrics")):
+        return JSONResponse({"error": "sign-in with IBM Verify isn't configured (scripts/openshift/verify-secret.sh)"}, 503)
     if not identity.enabled() or path.startswith(OPEN):
         return await call_next(request)
     if (s := identity.session(request)) is not None:

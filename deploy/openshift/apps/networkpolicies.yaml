@@ -33,12 +33,11 @@ spec:
     matchLabels: {app.kubernetes.io/name: apisix}
   policyTypes: [Ingress, Egress]
   ingress:
-    # Data plane: the gateway Routes (F1), agents and the console calling back through the
-    # gateway (F2-F4), the console's OAuth proxy, the kill switch's verification probe (KS-04)
+    # Data plane: the gateway and console Routes (F1), agents and the console calling back
+    # through the gateway (F2-F4), the kill switch's verification probe (KS-04)
     - from:
         - {namespaceSelector: {matchLabels: {policy-group.network.openshift.io/ingress: ""}}}
         - {namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: aigw-ai}}}
-        - {podSelector: {matchLabels: {app: console-oauth}}}
         - {podSelector: {matchLabels: {app: killswitch}}}
       ports: [{port: 9080, protocol: TCP}]
     # Prometheus scrape
@@ -112,12 +111,12 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata: {name: oauth-proxies, namespace: aigw-gateway}
 spec:
-  # The OAuth proxies in front of the console, the kill-switch panel and the APISIX Admin UI
+  # The OAuth proxies in front of the kill-switch panel and the APISIX Admin UI
   # (OS-04, D-057): reached
   # from the router; they log users in against the cluster's OAuth server, whose address
   # is the public oauth-openshift Route (443), and call the API server (6443).
   podSelector:
-    matchExpressions: [{key: app, operator: In, values: [console-oauth, killswitch-oauth, apisix-oauth]}]
+    matchExpressions: [{key: app, operator: In, values: [killswitch-oauth, apisix-oauth]}]
   policyTypes: [Ingress, Egress]
   ingress:
     - from: [{namespaceSelector: {matchLabels: {policy-group.network.openshift.io/ingress: ""}}}]

@@ -1,0 +1,22 @@
+{
+  "id": "console-landing",
+  "name": "console-landing",
+  "desc": "The console's own host (aigw-console.<domain>, OpenShift): / -> /console/, so the bare address opens the sign-in page (D-072)",
+  "uri": "/",
+  "methods": [
+    "GET"
+  ],
+  "vars": [
+    [
+      "host",
+      "~~",
+      "^aigw-console\\."
+    ]
+  ],
+  "plugins": {
+    "redirect": {
+      "uri": "/console/",
+      "ret_code": 302
+    }
+  }
+}

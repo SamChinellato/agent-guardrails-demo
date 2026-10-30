@@ -146,7 +146,7 @@ Pitfalls fixed on the way: the Service `vllm` injects `VLLM_PORT=tcp://…`, whi
 
 | Endpoint | Route | Auth |
 |---|---|---|
-| Console (`/console` on APISIX) | `aigw-console.<domain>` edge TLS → oauth-proxy → APISIX `/console/` only; `/` forwards to `/console/` (D-064) | OpenShift OAuth; plus the console's own controls as today |
+| Console (`/console` on APISIX) | `aigw-console.<domain>` edge TLS → APISIX; `/` redirects to `/console/` (route `console-landing`) | IBM Verify sign-in in the console itself (D-072); the oauth-proxy (D-064) is gone |
 | Gateway API (CLI, tests) | `gateway-…` edge TLS → APISIX directly | Consumer keys (key-auth) as today. Not behind OAuth, so the CLI and tests keep working. |
 | Grafana | `aigw-grafana.<domain>` edge TLS → oauth-proxy → Grafana | OpenShift OAuth, then anonymous Viewer (**done**, D-058) |
 | Kill-switch panel | `killswitch-…` edge TLS → oauth-proxy → panel | OpenShift OAuth, then the operator token as today |

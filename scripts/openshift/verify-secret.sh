@@ -5,7 +5,9 @@
 # read as optional, so without this Secret the console stays anonymous.
 #
 #   scripts/openshift/verify-secret.sh            # AUTH_MODE=verify: sign in with IBM Verify
-#   MODE=none scripts/openshift/verify-secret.sh  # roll back: anonymous console, Secret kept
+#
+# There is no anonymous mode on OpenShift: Verify is the console's only gate (no OAuth proxy
+# in front, D-072), so the console needs this Secret to serve anything.
 #
 # The redirect URI is built from the cluster's ingress domain, so nothing cluster-specific is
 # in git. Idempotent.
@@ -24,7 +26,7 @@ for k in VERIFY_TENANT VERIFY_CONSOLE_CLIENT_ID VERIFY_CONSOLE_CLIENT_SECRET \
   [[ -n "${!k:-}" ]] || die "$ENV_FILE is missing $k"
 done
 MODE="${MODE:-verify}"
-[[ "$MODE" == verify || "$MODE" == none ]] || die "MODE must be verify or none"
+[[ "$MODE" == verify ]] || die "MODE=$MODE: the console has no other sign-in on OpenShift, so it can't run without Verify (D-072). To go back to the OpenShift login in front of it, revert the D-072 commit that removed it."
 
 DOMAIN="$(oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}')"
 [[ -n "$DOMAIN" ]] || die "couldn't read the cluster's ingress domain"
