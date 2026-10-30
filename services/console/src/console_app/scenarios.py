@@ -267,6 +267,14 @@ async def coastal_cascade(text: str) -> list[dict]:
     return steps
 
 
+async def blue_ridge(text: str) -> list[dict]:
+    """Ordinary follow-ups (D-072): the executor updates Blue Ridge's record and emails the
+    internal quality team, both within its own rules, so who is signed in decides: an
+    analyst-actions user's agents may do it, an analyst-readonly user's may not."""
+    await preconditions()
+    return [await task(text, "s0:scripted")]
+
+
 async def meridian(text: str) -> list[dict]:
     await preconditions()
     # Only the withheld notice is shown, not the agent's answer (D-069)
@@ -287,6 +295,7 @@ async def rogue_chat(text: str) -> list[dict]:
 TRIGGERS = [
     (re.compile(r"\bcoastal\b", re.I), coastal_cascade),
     (re.compile(r"\bmeridian\b", re.I), meridian),
+    (re.compile(r"\bblue ridge\b", re.I), blue_ridge),
     (re.compile(r"\b(keep|continue) (re-?reading|re-?checking|reading|checking)\b|\buntil i (tell|say)\b", re.I), rogue_chat),
 ]
 

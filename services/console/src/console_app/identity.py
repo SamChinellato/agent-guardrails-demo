@@ -99,7 +99,8 @@ def user(request: Request) -> dict | None:
         return None
     c = s.claims
     return {"sub": c.get("sub"), "username": c.get("preferred_username") or c.get("email") or c.get("sub"),
-            "name": c.get("name") or c.get("preferred_username"), "groups": _groups(c)}
+            "name": c.get("name") or c.get("preferred_username"), "email": c.get("email"),
+            "groups": [g for g in _groups(c) if g != "allUsers"], "auth_time": c.get("auth_time")}
 
 
 def _groups(c: dict) -> list[str]:
@@ -189,7 +190,7 @@ def me(request: Request) -> JSONResponse:
         return JSONResponse({"mode": MODE})
     if (s := session(request)) is None:
         return JSONResponse({"mode": MODE, "user": None}, 401)
-    return JSONResponse({"mode": MODE, "user": user(request),
+    return JSONResponse({"mode": MODE, "user": user(request), "session_expires": s.expires,
                          "tokens": {"id_token": s.claims, "access_token": _claims(s.access_token)},
                          "acting_for_you": s.obo})
 

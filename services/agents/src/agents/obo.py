@@ -73,10 +73,11 @@ def claims(token: str) -> dict:
 
 
 def summary(agent: str, token: str) -> dict:
-    """What the console shows about an OBO token: whose it is, for whom, until when. Never the
-    token itself."""
+    """What the console shows about an OBO token: whose it is, for whom, until when, and every
+    claim IBM Verify put in it. Never the token itself."""
     c = claims(token)
     groups = c.get("groups") or []
     return {"agent": agent, "user": c.get("preferred_username") or c.get("sub"), "sub": c.get("sub"),
             "aud": c.get("aud"), "client_id": c.get("client_id"), "grant_type": c.get("grant_type"),
-            "groups": [groups] if isinstance(groups, str) else groups, "iat": c.get("iat"), "exp": c.get("exp")}
+            "groups": [groups] if isinstance(groups, str) else groups, "iat": c.get("iat"), "exp": c.get("exp"),
+            "claims": c}

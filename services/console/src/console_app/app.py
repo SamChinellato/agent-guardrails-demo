@@ -68,6 +68,7 @@ async def signin(request: Request):
 app.add_api_route("/auth/login", identity.login, methods=["GET"], include_in_schema=False)
 app.add_api_route("/auth/callback", identity.callback, methods=["GET"], include_in_schema=False)
 app.add_api_route("/auth/logout", identity.logout, methods=["GET"], include_in_schema=False)
+
 app.add_api_route("/api/me", identity.me, methods=["GET"], include_in_schema=False)
 
 

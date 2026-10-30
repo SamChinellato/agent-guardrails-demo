@@ -40,6 +40,17 @@
   .persona a { color: var(--muted); }
   .spacer { flex: 1; }
   .hbtn { background: transparent; color: var(--ink); border: 1px solid var(--rule); border-radius: 10px; padding: 7px 14px; font-size: 0.92rem; }
+  /* Identity panel (D-072): the user's Verify token, decoded */
+  .hbtn[hidden] { display: none; }
+  .identity h3 { font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 10px; font-weight: 700; }
+  table.claimtbl { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  .claimtbl th { text-align: left; font: 400 0.85rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); width: 38%; padding: 7px 8px; }
+  .claimtbl td { padding: 7px 8px; overflow-wrap: anywhere; }
+  .claimtbl tr + tr th, .claimtbl tr + tr td { border-top: 1px solid var(--rule); }
+  .claimtbl tr.key th, .claimtbl tr.key td { background: var(--lane-soft); color: var(--lane); font-weight: 700; }
+  .identity .claims { margin-top: 14px; }
+  .claims summary { cursor: pointer; color: var(--lane); font-size: 0.88rem; }
+  .claims pre { background: var(--fog); border-radius: 8px; padding: 8px 10px; font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; }
   /* User menu (D-072): who is signed in, and sign-out */
   .usermenu { position: relative; }
   .usermenu[hidden] { display: none; }
@@ -143,6 +154,7 @@
     <p class="persona">Acme procurement. <span id="who">You're signed in as a procurement analyst.</span> <a href="architecture.png" target="_blank" rel="noopener">How it works</a></p>
   </div>
   <span class="spacer"></span>
+  <button class="hbtn" id="identityBtn" type="button" aria-pressed="false" aria-controls="identity" hidden>Identity</button>
   <button class="hbtn" id="monitorBtn" type="button" aria-pressed="false" aria-controls="monitor">Monitoring</button>
   <button class="hbtn" id="newChat" type="button" title="Clear the chat, close every circuit breaker and restore the policy">New chat</button>
   <div class="usermenu" id="userMenu" hidden>
@@ -173,6 +185,10 @@
       <button class="send" id="send" type="submit">Send</button>
     </form>
   </main>
+  <aside class="monitor identity" id="identity" hidden aria-label="Identity">
+    <h2>Identity</h2>
+    <div id="idBody"></div>
+  </aside>
   <aside class="monitor" id="monitor" hidden aria-label="Monitoring">
     <h2>Where it went</h2>
     <p class="for" id="monFor">Send a message to see its path.</p>
@@ -230,6 +246,7 @@ fetch("api/me").then(r => r.ok ? r.json() : null).then(me => {
   document.getElementById("userFull").textContent = name;
   document.getElementById("userLogin").textContent = u.username;
   userMenu.hidden = false;
+  identityBtn.hidden = false;
 }).catch(() => {});
 
 const TOOL_ATTEMPT = {
@@ -363,6 +380,7 @@ async function ask(text) {
   // a blocked message never reached the assistant, so it stays out of the conversation
   if (d.kind !== "blocked" && d.kind !== "error") history.push({ role: "user", content: text });
   render(ex, d);
+  if (!identityPanel.hidden) refreshIdentity();   // the agents may hold new tokens for you
   busy(false);
   if (ex.traceId) select(ex);
   down();
@@ -550,7 +568,48 @@ function setMonitor(on) {
   if (on && selected) select(selected);
   else if (!on && selected) selected.node.classList.remove("selected");
 }
-monitorBtn.addEventListener("click", () => setMonitor(monitor.hidden));
+monitorBtn.addEventListener("click", () => { setIdentity(false); setMonitor(monitor.hidden); });
+
+// Identity (D-072): who you are, what the agents may do for you (from the guard's live
+// policy), and the token each agent holds for you. Claims only; the tokens stay server-side.
+const identityBtn = document.getElementById("identityBtn");
+const identityPanel = document.getElementById("identity");
+const idBody = document.getElementById("idBody");
+function setIdentity(on) {
+  identityPanel.hidden = !on;
+  identityBtn.setAttribute("aria-pressed", String(on));
+  if (on) refreshIdentity();
+}
+identityBtn.addEventListener("click", () => { setMonitor(false); setIdentity(identityPanel.hidden); });
+const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const when = t => t ? new Date(t * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "";
+const short = v => { const s = Array.isArray(v) ? v.join(", ") : String(v ?? ""); return s.length > 14 ? s.slice(0, 8) + "…" + s.slice(-4) : s; };
+async function refreshIdentity() {
+  let me;
+  try { const r = await fetch("api/me"); if (!r.ok) return; me = await r.json(); } catch { return; }
+  if (!me.user) return;
+  const c = me.tokens.access_token || {}, u = me.user;
+  idBody.replaceChildren();
+
+  // The token's key claims, groups highlighted: that is where the permissions come from
+  const box = mk("section");
+  box.append(mk("h3", null, "Your IBM Verify token"));
+  const tbl = mk("table", "claimtbl"), tb = mk("tbody");
+  const aud = [].concat(c.aud || []).includes(c.client_id) ? "console" : short(c.aud);
+  const groups = [].concat(c.groups || []).filter(g => g !== "allUsers").join(", ") || "none";
+  for (const [k, v, key] of [["sub", c.sub], ["username", c.preferred_username || u.username], ["groups", groups, true],
+                              ["aud", aud], ["expires", when(c.exp)]]) {
+    const tr = mk("tr", key ? "key" : "");
+    tr.append(mk("th", null, (key ? "▶ " : "") + k), mk("td", null, v));
+    tb.append(tr);
+  }
+  tbl.append(tb); box.append(tbl);
+
+  const all = mk("details", "claims");
+  all.append(mk("summary", null, "Show all claims"), mk("pre", null, JSON.stringify(c, null, 2)));
+  box.append(all);
+  idBody.append(box);
+}
 
 showWelcome();
 drawEmpty();

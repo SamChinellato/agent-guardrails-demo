@@ -18,8 +18,8 @@ researcher ──hand-off──▶ executor ──token exchange──▶ OBO to
 | 0 | Verify tenant: users, groups, three apps (below) | done (`samcverify.verify.ibm.com`, 2026-10-30) |
 | 1 | Smoke test: `scripts/openshift/verify-obo-smoke.py` shows what the tokens carry | passed for claire and dave; findings below |
 | 2 | Console sign-in (`AUTH_MODE=verify`) | live on syd05 (2026-10-30) |
-| 3 | Sign-in page and user menu; `/api/me` lists the OBO tokens the agents used | live on syd05; a token view is still to do |
-| 4 | Agents exchange and send OBO tokens; the guard checks them and decides on groups | built and tested locally |
+| 3 | Sign-in page, user menu, and an **Identity** panel showing the user's decoded Verify token | sign-in and menu live; panel deploying (2026-10-30) |
+| 4 | Agents exchange and send OBO tokens; the guard checks them and decides on groups | live on syd05 (2026-10-30) |
 | 5 | NetworkPolicy egress to the tenant, Secret, decision trail shows the user | egress and Secret done; the user is on every decision record |
 
 ## How the agents act for a person
@@ -43,6 +43,15 @@ researcher ──hand-off──▶ executor ──token exchange──▶ OBO to
 | export customer data | ✗ for everyone (`deny_tools_all`, trips the circuit breaker) | ✗ |
 
 A call with no token is anonymous and skips `mcp.user_entitlement`, as on k3d or with `AUTH_MODE=none`. A token that fails verification blocks the call.
+
+## Showing it
+
+- **Identity** (header button, next to Monitoring; signed-in only): the person's IBM Verify token, decoded. It shows `sub`, `username`, `groups` (highlighted: the permissions come from it), `aud` and `expires`, and **Show all claims** gives the full set. The token itself never reaches the browser; the console decodes it server-side for `/api/me`.
+- **Claire against Dave:** send *Put Blue Ridge on watch and raise a corrective action with quality*. Any message mentioning Blue Ridge plays the baseline scenario (`s0:scripted`): the executor updates Blue Ridge's record and emails the internal quality team. Both actions are within the executor's own rules, so only the person decides:
+  - As claire, both are refused (`mcp.user_entitlement`, "claire may not …").
+  - As dave, both go through.
+  - Press **New chat** between runs.
+- **Decision details:** every guard decision names the person the agent acted for.
 
 ## What the smoke test found
 
